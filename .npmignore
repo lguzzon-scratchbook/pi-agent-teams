@@ -18,6 +18,9 @@ npm-debug.log*
 # Lockfiles
 package-lock.json
 
+# Local TypeScript config
+/tsconfig.json
+
 # macOS
 .DS_Store
 **/.DS_Store
