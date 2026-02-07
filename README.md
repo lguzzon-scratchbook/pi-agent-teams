@@ -1,164 +1,166 @@
 # pi-agent-teams
 
-A Pi extension that adds a lightweight **Teams** workflow by spawning teammate `pi` subprocesses and coordinating. Inspired by [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams#control-your-agent-team):
+An experimental [Pi](https://pi.dev) extension that brings [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams) to Pi. Spawn teammates, share a task list, and coordinate work across multiple Pi sessions.
 
-- Shared **task list on disk** (file-per-task)
-- File-based **mailboxes** (inboxes) for task assignment pings + DM + idle notifications
-- **Self-claim** (on by default, Claude-style): idle workers claim the next open *unassigned* task
+> **Status:** MVP (command-driven + status widget). See [`docs/claude-parity.md`](docs/claude-parity.md) for the full roadmap.
 
-Status: MVP (command-driven + a small status widget).
+## Features
 
-Roadmap / Claude parity checklist:
-- `docs/claude-parity.md`
+Core agent-teams primitives, matching Claude's design:
 
-## Dev workflow
+- **Shared task list** — file-per-task on disk with three states (pending / in-progress / completed) and dependency tracking so blocked tasks stay blocked until their prerequisites finish.
+- **Auto-claim** — idle teammates automatically pick up the next unassigned, unblocked task. No manual dispatching required (disable with `PI_TEAMS_DEFAULT_AUTO_CLAIM=0`).
+- **Direct messages and broadcast** — send a message to one teammate or all of them at once, via file-based mailboxes.
+- **Graceful lifecycle** — spawn, stop, shutdown (with handshake), or kill teammates. The leader tracks who's online, idle, or streaming.
+- **LLM-callable delegate tool** — the model can spawn teammates and create/assign tasks in a single tool call, no slash commands needed.
+- **Team cleanup** — tear down all team artifacts (tasks, mailboxes, sessions, worktrees) when you're done.
 
-### Smoke test (no API keys required)
+Additional Pi-specific capabilities:
 
-Runs a small filesystem-level test of the task store + mailbox + team config:
+- **Git worktrees** — optionally give each teammate its own worktree so they work on isolated branches without conflicting edits.
+- **Session branching** — clone the leader's conversation context into a teammate so it starts with full awareness of the work so far, instead of from scratch.
 
-```bash
-cd ~/projects/pi-agent-teams
-node scripts/smoke-test.mjs
-```
+## Install
 
-### E2E RPC test (spawns pi + one teammate)
-
-Runs a minimal end-to-end test by starting a leader `pi --mode rpc`, spawning one worker, requesting a graceful shutdown via mailbox handshake (`/team shutdown <name>`), verifying `config.json` goes offline, then shutting down the leader.
-
-Notes:
-- No model calls are made (should not require API keys).
-- The script keeps your normal Pi config/credentials, but sets `PI_TEAMS_ROOT_DIR` to a temporary directory so it doesn’t write into `~/.pi/agent/teams`.
+**Option A — install from npm:**
 
 ```bash
-cd ~/projects/pi-agent-teams
-node scripts/e2e-rpc-test.mjs
+pi install npm:@tmustier/pi-agent-teams
 ```
 
-### tmux: leader + interactive worker panes (dogfooding)
-
-This repo includes a helper that starts a **leader** plus one tmux window per **worker** (interactive sessions), using a fresh temp `PI_TEAMS_ROOT_DIR` by default:
-
-```bash
-cd ~/projects/pi-agent-teams
-./scripts/start-tmux-team.sh pi-teams alice bob
-# then:
-#   tmux attach -t pi-teams
-```
-
-(We intentionally do not commit terminal screenshots to the public repo. Capture local screenshots under `.artifacts/` if needed.)
-
-### Load directly
+**Option B — load directly (dev):**
 
 ```bash
 pi -e ~/projects/pi-agent-teams/extensions/teams/index.ts
 ```
 
-### Install as a Pi package (optional)
+**Option C — install from a local folder:**
 
 ```bash
 pi install ~/projects/pi-agent-teams
 ```
 
-Then run `pi` normally; the extension will be auto-discovered.
+Then run `pi` normally; the extension auto-discovers.
 
-## Commands
+Verify with `/team id` — it should print the current team info.
 
-### Teammates
+## Quick start
 
-- `/team id` – print the current `teamId`/`taskListId`/`leadName` plus `teamsRoot` + `teamDir`
-- `/team env <name>` – print copy/paste env vars + a `pi` command to start an interactive worker manually (tmux-friendly)
-- `/team spawn <name> [fresh|branch] [shared|worktree]` – start a teammate process (`pi --mode rpc`)
-  - Leader assigns teammate session names like `pi agent teams - comrade <name>` (shows in the session selector via `session_info`).
-  - Spawns workers with `--no-extensions -e <this-extension>` when possible, so dev mode works without installing.
-  - `worktree` mode creates a per-teammate git worktree under `<teamsRoot>/<teamId>/worktrees/<name>`.
-    - Warns (but does not block) if your git working directory is not clean.
-    - Falls back to `shared` if the cwd is not a git repository.
-  - Self-claim is **on by default** (Claude-style). Disable it by launching the leader with `PI_TEAMS_DEFAULT_AUTO_CLAIM=0`.
-- `/team send <name> <msg...>` – send a prompt over RPC (manual override; RPC teammates only)
-- `/team steer <name> <msg...>` – steer an in-flight RPC teammate run (RPC teammates only)
-- `/team stop <name> [reason...]` – request an abort (mailbox `abort_request` for all workers; plus RPC abort when available)
-  - If the worker was running a task, it resets it back to `pending` (keeping the `owner`) instead of marking it `completed`.
-- `/team dm <name> <msg...>` – send a mailbox message (Claude-style)
-- `/team broadcast <msg...>` – send a mailbox message to all teammates
-- `/team shutdown <name> [reason...]` – graceful teammate shutdown (mailbox handshake)
-- `/team kill <name>` – terminate the process
-- `/team list` – list teammates
-- `/team shutdown` – shutdown leader + stop all RPC teammates (exit pi)
-- `/team cleanup [--force]` – delete the current `teamDir` (tasks, mailboxes, sessions, worktrees)
-  - Refuses if RPC teammates are running or if there are `in_progress` tasks unless `--force`.
-  - Prompts in interactive mode; in non-interactive/RPC mode, requires `--force`.
+```
+# In a Pi session with the extension loaded:
 
-### Task list
+/team spawn alice                          # spawn a teammate (fresh session, shared workspace)
+/team spawn bob branch worktree            # spawn with leader context + isolated worktree
 
-- `/team task add <text...>` – create a task
-  - Optional assignee prefix: `alice: review the API surface` (sets `owner` and pings via mailbox)
-- `/team task assign <id> <agent>` – assign an existing task (sets `owner`, pings assignee)
-- `/team task unassign <id>` – clear owner (resets to pending if not completed)
-- `/team task list` – show recent tasks (marks blocked tasks; shows deps/blocks counts)
-- `/team task show <id>` – show full description + stored `metadata.result` (if any)
-- `/team task dep add <id> <depId>` – add dependency (`<id>` is blocked until `<depId>` is completed)
-- `/team task dep rm <id> <depId>` – remove dependency
-- `/team task dep ls <id>` – show deps/blocks for a task
-- `/team task clear [completed|all] [--force]` – delete task JSON files (defaults to `completed`)
-  - Prompts in interactive mode; in non-interactive/RPC mode, requires `--force`.
+/team task add alice: Fix failing tests    # create a task and assign it to alice
+/team task add Refactor auth module        # unassigned — auto-claimed by next idle teammate
 
-## Agent tool (LLM-callable)
+/team dm alice Check the edge cases too    # direct message
+/team broadcast Wrapping up soon           # message everyone
 
-The extension registers an LLM-callable tool named **`teams`**.
+/team shutdown alice                       # graceful shutdown (handshake)
+/team cleanup                              # remove team artifacts when done
+```
 
-Current action:
-- `delegate` – spawn teammates (if needed) and create/assign tasks.
-
-Example parameters (conceptual):
+Or let the model drive it with the delegate tool:
 
 ```json
 {
   "action": "delegate",
   "contextMode": "branch",
   "workspaceMode": "worktree",
-  "teammates": ["alice", "bob", "carol"],
+  "teammates": ["alice", "bob"],
   "tasks": [
     { "text": "Fix failing unit tests" },
-    { "text": "Refactor auth module" },
-    { "text": "Update README" }
+    { "text": "Refactor auth module" }
   ]
 }
 ```
 
-## Storage
+## Commands
 
-Default storage root is the Pi agent dir (usually `~/.pi/agent`) under `teams/`.
+All commands live under `/team`.
 
-You can override the Teams storage root (useful for tests/CI) via:
+### Teammates
 
-- `PI_TEAMS_ROOT_DIR=/absolute/path` (recommended)
-- or `PI_TEAMS_ROOT_DIR=relative/path` (relative to the agent dir)
+| Command | Description |
+| --- | --- |
+| `/team spawn <name> [fresh\|branch] [shared\|worktree]` | Start a teammate |
+| `/team list` | List teammates and their status |
+| `/team send <name> <msg>` | Send a prompt over RPC |
+| `/team steer <name> <msg>` | Redirect an in-flight run |
+| `/team dm <name> <msg>` | Send a mailbox message |
+| `/team broadcast <msg>` | Message all teammates |
+| `/team stop <name> [reason]` | Abort current work (resets task to pending) |
+| `/team shutdown <name> [reason]` | Graceful shutdown (handshake) |
+| `/team shutdown` | Shutdown leader + all teammates |
+| `/team kill <name>` | Force-terminate |
+| `/team cleanup [--force]` | Delete team artifacts |
+| `/team id` | Print team/task-list IDs and paths |
+| `/team env <name>` | Print env vars to start a manual worker |
 
-Paths (relative to the teams root):
+### Tasks
 
-- Team root:
-  - `<teamsRoot>/<leaderSessionId>/`
+| Command | Description |
+| --- | --- |
+| `/team task add <text>` | Create a task (prefix with `name:` to assign) |
+| `/team task assign <id> <agent>` | Assign a task |
+| `/team task unassign <id>` | Remove assignment |
+| `/team task list` | Show tasks with status, deps, blocks |
+| `/team task show <id>` | Full description + result |
+| `/team task dep add <id> <depId>` | Add a dependency |
+| `/team task dep rm <id> <depId>` | Remove a dependency |
+| `/team task dep ls <id>` | Show deps and blocks |
+| `/team task clear [completed\|all]` | Delete task files |
 
-- Task list (Claude-style, file-per-task + `.highwatermark`):
-  - `<teamsRoot>/<leaderSessionId>/tasks/<taskListId>/`
+## Configuration
 
-- Mailboxes (JSON arrays, one per agent):
-  - `<teamsRoot>/<leaderSessionId>/mailboxes/<namespace>/inboxes/<agent>.json`
+| Environment variable | Purpose | Default |
+| --- | --- | --- |
+| `PI_TEAMS_ROOT_DIR` | Storage root (absolute or relative to `~/.pi/agent`) | `~/.pi/agent/teams` |
+| `PI_TEAMS_DEFAULT_AUTO_CLAIM` | Whether spawned teammates auto-claim tasks | `1` (on) |
 
-- Teammate sessions:
-  - `<teamsRoot>/<leaderSessionId>/sessions/`
+## Storage layout
 
-- Teammate git worktrees (when using `worktree` mode):
-  - `<teamsRoot>/<leaderSessionId>/worktrees/<agent>/`
+```
+<teamsRoot>/<teamId>/
+  config.json                          # team metadata + members
+  tasks/<taskListId>/
+    1.json, 2.json, ...                # one file per task
+    .highwatermark                      # next task ID
+  mailboxes/<namespace>/inboxes/
+    <agent>.json                        # per-agent inbox
+  sessions/                             # teammate session files
+  worktrees/<agent>/                    # git worktrees (when enabled)
+```
 
-## Notes
+## Development
 
-- “branch” context uses Pi’s `SessionManager.createBranchedSession()` to clone the current leader session branch into the teammate’s session file.
-- Extension runs in two modes:
-  - leader mode in your main pi session
-  - worker mode in teammates (enabled via env vars like `PI_TEAMS_WORKER=1`)
+### Smoke test (no API keys)
+
+```bash
+node scripts/smoke-test.mjs
+```
+
+Filesystem-level test of the task store, mailbox, and team config.
+
+### E2E RPC test (spawns pi + one teammate)
+
+```bash
+node scripts/e2e-rpc-test.mjs
+```
+
+Starts a leader in RPC mode, spawns a worker, runs a shutdown handshake, verifies cleanup. Sets `PI_TEAMS_ROOT_DIR` to a temp directory so nothing touches `~/.pi/agent/teams`.
+
+### tmux dogfooding
+
+```bash
+./scripts/start-tmux-team.sh pi-teams alice bob
+tmux attach -t pi-teams
+```
+
+Starts a leader + one tmux window per worker for interactive testing.
 
 ## License
 
-MIT (see `LICENSE`).
+MIT (see [`LICENSE`](LICENSE)).

@@ -1,0 +1,19 @@
+# Local artifacts / notes
+.artifacts/
+.research/
+
+# Local scratch
+/tmp/
+/test*/
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+**/.DS_Store
+._*
