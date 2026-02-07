@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { withLock } from "./fs-lock.js";
+import { sanitizeName } from "./names.js";
 
 export interface MailboxMessage {
 	from: string;
@@ -10,16 +11,12 @@ export interface MailboxMessage {
 	color?: string;
 }
 
-function sanitize(name: string): string {
-	return name.replace(/[^a-zA-Z0-9_-]/g, "-");
-}
-
 function inboxDir(teamDir: string, namespace: string): string {
-	return path.join(teamDir, "mailboxes", sanitize(namespace), "inboxes");
+	return path.join(teamDir, "mailboxes", sanitizeName(namespace), "inboxes");
 }
 
 export function getInboxPath(teamDir: string, namespace: string, agentName: string): string {
-	return path.join(inboxDir(teamDir, namespace), `${sanitize(agentName)}.json`);
+	return path.join(inboxDir(teamDir, namespace), `${sanitizeName(agentName)}.json`);
 }
 
 async function ensureDir(p: string): Promise<void> {

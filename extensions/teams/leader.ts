@@ -8,6 +8,15 @@ import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { popUnreadMessages, writeToMailbox } from "./mailbox.js";
+import { sanitizeName } from "./names.js";
+import {
+	TEAM_MAILBOX_NS,
+	isIdleNotification,
+	isPeerDmSent,
+	isPlanApprovalRequest,
+	isShutdownApproved,
+	isShutdownRejected,
+} from "./protocol.js";
 import { cleanupTeamDir } from "./cleanup.js";
 import {
 	addTaskDependency,
@@ -28,7 +37,6 @@ import { ensureTeamConfig, loadTeamConfig, setMemberStatus, upsertMember, type T
 import { getTeamDir, getTeamsRootDir } from "./paths.js";
 import { ensureWorktreeCwd } from "./worktree.js";
 
-const TEAM_MAILBOX_NS = "team";
 
 type ContextMode = "fresh" | "branch";
 type WorkspaceMode = "shared" | "worktree";
@@ -84,10 +92,6 @@ function getTeamsExtensionEntryPath(): string | null {
 	} catch {
 		return null;
 	}
-}
-
-function sanitizeName(name: string): string {
-	return name.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
 function shellQuote(v: string): string {
@@ -174,131 +178,7 @@ function taskAssignmentPayload(task: TeamTask, assignedBy: string) {
 	};
 }
 
-function isIdleNotification(
-	text: string,
-): {
-	from: string;
-	timestamp?: string;
-	completedTaskId?: string;
-	completedStatus?: string;
-	failureReason?: string;
-} | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "idle_notification") return null;
-		return {
-			from: typeof obj.from === "string" ? obj.from : "unknown",
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : undefined,
-			completedTaskId: typeof obj.completedTaskId === "string" ? obj.completedTaskId : undefined,
-			completedStatus: typeof obj.completedStatus === "string" ? obj.completedStatus : undefined,
-			failureReason: typeof obj.failureReason === "string" ? obj.failureReason : undefined,
-		};
-	} catch {
-		return null;
-	}
-}
-
-function isShutdownApproved(
-	text: string,
-): {
-	from: string;
-	requestId: string;
-	timestamp?: string;
-} | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "shutdown_approved") return null;
-		if (typeof obj.requestId !== "string") return null;
-		return {
-			from: typeof obj.from === "string" ? obj.from : "unknown",
-			requestId: obj.requestId,
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : undefined,
-		};
-	} catch {
-		return null;
-	}
-}
-
-function isShutdownRejected(
-	text: string,
-): {
-	from: string;
-	requestId: string;
-	reason: string;
-	timestamp?: string;
-} | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "shutdown_rejected") return null;
-		if (typeof obj.requestId !== "string") return null;
-		return {
-			from: typeof obj.from === "string" ? obj.from : "unknown",
-			requestId: obj.requestId,
-			reason: typeof obj.reason === "string" ? obj.reason : "",
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : undefined,
-		};
-	} catch {
-		return null;
-	}
-}
-
-function isPlanApprovalRequest(
-	text: string,
-): {
-	requestId: string;
-	from: string;
-	plan: string;
-	taskId?: string;
-	timestamp?: string;
-} | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "plan_approval_request") return null;
-		if (typeof obj.requestId !== "string") return null;
-		if (typeof obj.from !== "string") return null;
-		if (typeof obj.plan !== "string") return null;
-		return {
-			requestId: obj.requestId,
-			from: obj.from,
-			plan: obj.plan,
-			taskId: typeof obj.taskId === "string" ? obj.taskId : undefined,
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : undefined,
-		};
-	} catch {
-		return null;
-	}
-}
-
-function isPeerDmSent(
-	text: string,
-): {
-	from: string;
-	to: string;
-	summary: string;
-	timestamp?: string;
-} | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "peer_dm_sent") return null;
-		if (typeof obj.from !== "string") return null;
-		if (typeof obj.to !== "string") return null;
-		if (typeof obj.summary !== "string") return null;
-		return {
-			from: obj.from,
-			to: obj.to,
-			summary: obj.summary,
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : undefined,
-		};
-	} catch {
-		return null;
-	}
-}
-
+// Message parsers are shared with the worker implementation.
 export function runLeader(pi: ExtensionAPI): void {
 	const teammates = new Map<string, TeammateRpc>();
 	let currentCtx: ExtensionCommandContext | null = null;

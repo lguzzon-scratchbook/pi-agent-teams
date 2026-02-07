@@ -3,6 +3,16 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "@sinclair/typebox";
 import { randomUUID } from "node:crypto";
 import { popUnreadMessages, writeToMailbox } from "./mailbox.js";
+import { sanitizeName } from "./names.js";
+import {
+	TEAM_MAILBOX_NS,
+	isAbortRequestMessage,
+	isPlanApprovedMessage,
+	isPlanRejectedMessage,
+	isSetSessionNameMessage,
+	isShutdownRequestMessage,
+	isTaskAssignmentMessage,
+} from "./protocol.js";
 import { getTeamDir } from "./paths.js";
 import { ensureTeamConfig, setMemberStatus, upsertMember } from "./team-config.js";
 import {
@@ -16,14 +26,8 @@ import {
 	type TeamTask,
 } from "./task-store.js";
 
-const TEAM_MAILBOX_NS = "team";
-
 function sleep(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
-}
-
-function sanitize(name: string): string {
-	return name.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
 function teamDirFromEnv(): {
@@ -38,9 +42,9 @@ function teamDirFromEnv(): {
 	const agentNameRaw = process.env.PI_TEAMS_AGENT_NAME;
 	if (!teamId || !agentNameRaw) return null;
 
-	const agentName = sanitize(agentNameRaw);
+	const agentName = sanitizeName(agentNameRaw);
 	const taskListId = process.env.PI_TEAMS_TASK_LIST_ID ?? teamId;
-	const leadName = sanitize(process.env.PI_TEAMS_LEAD_NAME ?? "team-lead");
+	const leadName = sanitizeName(process.env.PI_TEAMS_LEAD_NAME ?? "team-lead");
 	const autoClaim = (process.env.PI_TEAMS_AUTO_CLAIM ?? "1") === "1";
 
 	return {
@@ -84,107 +88,7 @@ function buildTaskPrompt(agentName: string, task: TeamTask, planOnly = false): s
 	].join("\n");
 }
 
-function isTaskAssignmentMessage(text: string): { taskId: string; subject?: string; description?: string; assignedBy?: string } | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "task_assignment") return null;
-		if (typeof obj.taskId !== "string") return null;
-		return {
-			taskId: obj.taskId,
-			subject: typeof obj.subject === "string" ? obj.subject : undefined,
-			description: typeof obj.description === "string" ? obj.description : undefined,
-			assignedBy: typeof obj.assignedBy === "string" ? obj.assignedBy : undefined,
-		};
-	} catch {
-		return null;
-	}
-}
-
-function isShutdownRequestMessage(text: string): { requestId: string; from?: string; reason?: string; timestamp?: string } | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "shutdown_request") return null;
-		if (typeof obj.requestId !== "string") return null;
-		return {
-			requestId: obj.requestId,
-			from: typeof obj.from === "string" ? obj.from : undefined,
-			reason: typeof obj.reason === "string" ? obj.reason : undefined,
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : undefined,
-		};
-	} catch {
-		return null;
-	}
-}
-
-function isSetSessionNameMessage(text: string): { name: string } | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "set_session_name") return null;
-		if (typeof obj.name !== "string") return null;
-		return { name: obj.name };
-	} catch {
-		return null;
-	}
-}
-
-function isAbortRequestMessage(
-	text: string,
-): { requestId: string; from?: string; taskId?: string; reason?: string; timestamp?: string } | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "abort_request") return null;
-		if (typeof obj.requestId !== "string") return null;
-		return {
-			requestId: obj.requestId,
-			from: typeof obj.from === "string" ? obj.from : undefined,
-			taskId: typeof obj.taskId === "string" ? obj.taskId : undefined,
-			reason: typeof obj.reason === "string" ? obj.reason : undefined,
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : undefined,
-		};
-	} catch {
-		return null;
-	}
-}
-
-function isPlanApprovedMessage(text: string): { requestId: string; from: string; timestamp: string } | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "plan_approved") return null;
-		if (typeof obj.requestId !== "string" || typeof obj.from !== "string") return null;
-		return {
-			requestId: obj.requestId,
-			from: obj.from,
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : "",
-		};
-	} catch {
-		return null;
-	}
-}
-
-function isPlanRejectedMessage(
-	text: string,
-): { requestId: string; from: string; feedback: string; timestamp: string } | null {
-	try {
-		const obj = JSON.parse(text);
-		if (!obj || typeof obj !== "object") return null;
-		if (obj.type !== "plan_rejected") return null;
-		if (typeof obj.requestId !== "string" || typeof obj.from !== "string") return null;
-		return {
-			requestId: obj.requestId,
-			from: obj.from,
-			feedback: typeof obj.feedback === "string" ? obj.feedback : "",
-			timestamp: typeof obj.timestamp === "string" ? obj.timestamp : "",
-		};
-	} catch {
-		return null;
-	}
-}
-
+// Message parsers are shared with the leader implementation.
 export function runWorker(pi: ExtensionAPI): void {
 	const env = teamDirFromEnv();
 	if (!env) return;
@@ -200,7 +104,7 @@ export function runWorker(pi: ExtensionAPI): void {
 			message: Type.String({ description: "The message to send" }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const recipient = sanitize((params as any).recipient);
+			const recipient = sanitizeName((params as any).recipient);
 			const message = (params as any).message as string;
 			const ts = new Date().toISOString();
 			// Write to recipient's mailbox in team namespace
