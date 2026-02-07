@@ -522,10 +522,9 @@ export function runLeader(pi: ExtensionAPI): void {
 					});
 
 					const member = cfg.members.find((mm) => mm.name === name);
+					const existingSessionNameRaw = member?.meta?.["sessionName"];
 					const existingSessionName =
-						member?.meta && typeof (member.meta as any).sessionName === "string"
-							? String((member.meta as any).sessionName)
-							: undefined;
+						typeof existingSessionNameRaw === "string" ? existingSessionNameRaw : undefined;
 					const shouldSendName = existingSessionName !== desiredSessionName;
 
 					if (!member) {
