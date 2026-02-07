@@ -57,18 +57,39 @@ function teamDirFromEnv(): {
 	};
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function hasProperty<K extends string>(value: unknown, key: K): value is Record<K, unknown> & Record<string, unknown> {
+	return isObjectRecord(value) && key in value;
+}
+
+function hasStringProperty<K extends string>(value: unknown, key: K): value is Record<K, string> & Record<string, unknown> {
+	return isObjectRecord(value) && typeof value[key] === "string";
+}
+
+type AssistantMessageWithContent = Record<"role", "assistant"> & Record<"content", unknown> & Record<string, unknown>;
+
+function isAssistantMessageWithContent(message: unknown): message is AssistantMessageWithContent {
+	return hasStringProperty(message, "role") && message.role === "assistant" && hasProperty(message, "content");
+}
+
+type TextBlock = { type: "text"; text: string };
+
+function isTextBlock(block: unknown): block is TextBlock {
+	return hasStringProperty(block, "type") && block.type === "text" && hasStringProperty(block, "text");
+}
+
 function extractLastAssistantText(messages: AgentMessage[]): string {
-	const assistant = messages.filter((m: any) => m && typeof m === "object" && m.role === "assistant");
-	const last: any = assistant[assistant.length - 1];
+	const assistant = messages.filter((m) => isAssistantMessageWithContent(m));
+	const last = assistant.at(-1);
 	if (!last) return "";
 
 	const content = last.content;
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
-		return content
-			.filter((c) => c && typeof c === "object" && c.type === "text" && typeof (c as any).text === "string")
-			.map((c: any) => c.text)
-			.join("");
+		return content.filter((c) => isTextBlock(c)).map((c) => c.text).join("");
 	}
 	return "";
 }
@@ -104,8 +125,8 @@ export function runWorker(pi: ExtensionAPI): void {
 			message: Type.String({ description: "The message to send" }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const recipient = sanitizeName((params as any).recipient);
-			const message = (params as any).message as string;
+			const recipient = sanitizeName(params.recipient);
+			const message = params.message;
 			const ts = new Date().toISOString();
 			// Write to recipient's mailbox in team namespace
 			await writeToMailbox(teamDir, TEAM_MAILBOX_NS, recipient, {
@@ -125,7 +146,10 @@ export function runWorker(pi: ExtensionAPI): void {
 				}),
 				timestamp: ts,
 			});
-			return { content: [{ type: "text", text: `Message sent to ${recipient}` }] };
+			return {
+				content: [{ type: "text", text: `Message sent to ${recipient}` }],
+				details: { recipient, timestamp: ts },
+			};
 		},
 	});
 
@@ -308,7 +332,8 @@ export function runWorker(pi: ExtensionAPI): void {
 			// 1) Assigned tasks
 			const requeue: string[] = [];
 			while (pendingTaskAssignments.length) {
-				const taskId = pendingTaskAssignments.shift()!;
+				const taskId = pendingTaskAssignments.shift();
+				if (!taskId) break;
 				const task = await getTask(teamDir, taskListId, taskId);
 				if (!task) continue;
 				if (task.owner !== agentName) continue;
@@ -363,7 +388,16 @@ export function runWorker(pi: ExtensionAPI): void {
 		completedStatus?: "completed" | "failed",
 		failureReason?: string,
 	) => {
-		const payload: any = {
+		type IdleNotificationPayload = {
+			type: "idle_notification";
+			from: string;
+			timestamp: string;
+			completedTaskId?: string;
+			completedStatus?: "completed" | "failed";
+			failureReason?: string;
+		};
+
+		const payload: IdleNotificationPayload = {
 			type: "idle_notification",
 			from: agentName,
 			timestamp: new Date().toISOString(),
@@ -445,7 +479,7 @@ export function runWorker(pi: ExtensionAPI): void {
 		// Plan submission: if in plan mode and not yet approved, send plan to leader for review
 		// Only do this when we're working on a task and haven't already requested approval.
 		if (planMode && !planApproved && currentTaskId && !planRequestId) {
-			const lastAssistantText = extractLastAssistantText(event.messages as AgentMessage[]);
+			const lastAssistantText = extractLastAssistantText(event.messages);
 			const reqId = randomUUID();
 			planRequestId = reqId;
 			const timestamp = new Date().toISOString();
@@ -474,7 +508,7 @@ export function runWorker(pi: ExtensionAPI): void {
 
 		try {
 			if (taskId) {
-				const rawResult = extractLastAssistantText(event.messages as AgentMessage[]);
+				const rawResult = extractLastAssistantText(event.messages);
 				const trimmed = rawResult.trim();
 				const abortedByRequest = abortTaskId === taskId;
 				const aborted = abortedByRequest || trimmed.length === 0;

@@ -11,7 +11,45 @@ type RpcCommand =
 	| { id: string; type: "get_state" }
 	| { id: string; type: "set_session_name"; name: string };
 
-type RpcResponse = { id?: string; type: "response"; command: string; success: boolean; data?: any; error?: string };
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+type RpcCommandWithoutId = DistributiveOmit<RpcCommand, "id">;
+
+type RpcResponse = {
+	id?: string;
+	type: "response";
+	command: string;
+	success: boolean;
+	data?: unknown;
+	error?: string;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null;
+}
+
+function safeParseJsonLine(line: string): unknown | null {
+	try {
+		return JSON.parse(line);
+	} catch {
+		return null;
+	}
+}
+
+function isRpcResponse(v: unknown): v is RpcResponse {
+	if (!isRecord(v)) return false;
+	if (v.type !== "response") return false;
+	if (typeof v.command !== "string") return false;
+	if (typeof v.success !== "boolean") return false;
+	if (v.id !== undefined && typeof v.id !== "string") return false;
+	if (v.error !== undefined && typeof v.error !== "string") return false;
+	return true;
+}
+
+function isAgentEvent(v: unknown): v is AgentEvent {
+	if (!isRecord(v)) return false;
+	return typeof v.type === "string";
+}
 
 export class TeammateRpc {
 	readonly name: string;
@@ -135,7 +173,7 @@ export class TeammateRpc {
 		await this.send({ type: "abort" });
 	}
 
-	async getState(): Promise<any> {
+	async getState(): Promise<unknown> {
 		const resp = await this.send({ type: "get_state" });
 		return resp.data;
 	}
@@ -146,36 +184,32 @@ export class TeammateRpc {
 
 	private handleLine(line: string) {
 		if (!line.trim()) return;
-		let obj: any;
-		try {
-			obj = JSON.parse(line);
-		} catch {
-			return;
-		}
+		const obj = safeParseJsonLine(line);
+		if (obj === null) return;
 
 		// Response
-		if (obj && obj.type === "response") {
-			const id = obj.id as string | undefined;
-			if (!id) return;
-			const pending = this.pending.get(id);
+		if (isRpcResponse(obj)) {
+			if (typeof obj.id !== "string") return;
+			const pending = this.pending.get(obj.id);
 			if (!pending) return;
-			this.pending.delete(id);
-			pending.resolve(obj as RpcResponse);
+			this.pending.delete(obj.id);
+			pending.resolve(obj);
 			return;
 		}
 
 		// Agent event
-		const ev = obj as AgentEvent;
-		if (ev?.type === "agent_start") {
+		if (!isAgentEvent(obj)) return;
+		const ev = obj;
+		if (ev.type === "agent_start") {
 			this.status = "streaming";
 			this.lastAssistantText = "";
 		}
-		if (ev?.type === "agent_end") {
+		if (ev.type === "agent_end") {
 			this.status = "idle";
 		}
-		if (ev?.type === "message_update") {
-			const ame: any = (ev as any).assistantMessageEvent;
-			if (ame?.type === "text_delta" && typeof ame.delta === "string") {
+		if (ev.type === "message_update") {
+			const ame = ev.assistantMessageEvent;
+			if (ame.type === "text_delta") {
 				this.lastAssistantText += ame.delta;
 			}
 		}
@@ -183,10 +217,10 @@ export class TeammateRpc {
 		for (const l of this.eventListeners) l(ev);
 	}
 
-	private async send(cmd: Omit<RpcCommand, "id">): Promise<RpcResponse> {
+	private async send(cmd: RpcCommandWithoutId): Promise<RpcResponse> {
 		if (!this.proc || !this.proc.stdin) throw new Error("Teammate is not running");
 		const id = `req-${this.name}-${this.nextId++}`;
-		const full: RpcCommand = { id, ...(cmd as any) };
+		const full = { id, ...cmd } satisfies RpcCommand;
 
 		const payload = JSON.stringify(full) + "\n";
 		this.proc.stdin.write(payload);
