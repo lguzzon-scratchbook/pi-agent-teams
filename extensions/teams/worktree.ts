@@ -1,10 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFile } from "node:child_process";
-
-function sanitize(name: string): string {
-	return name.replace(/[^a-zA-Z0-9_-]/g, "-");
-}
+import { sanitizeName } from "./names.js";
 
 async function execGit(args: string[], opts: { cwd: string; timeoutMs?: number } ): Promise<{ stdout: string; stderr: string }> {
 	return await new Promise((resolve, reject) => {
@@ -71,8 +68,8 @@ export async function ensureWorktreeCwd(opts: {
 		// ignore status errors
 	}
 
-	const safeAgent = sanitize(opts.agentName);
-	const shortTeam = sanitize(opts.teamId).slice(0, 12) || "team";
+	const safeAgent = sanitizeName(opts.agentName);
+	const shortTeam = sanitizeName(opts.teamId).slice(0, 12) || "team";
 	const branch = `pi-teams/${shortTeam}/${safeAgent}`;
 
 	const worktreesDir = path.join(opts.teamDir, "worktrees");

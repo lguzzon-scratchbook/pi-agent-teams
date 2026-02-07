@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { withLock } from "./fs-lock.js";
+import { sanitizeName } from "./names.js";
 
 export type TaskStatus = "pending" | "in_progress" | "completed";
 
@@ -17,16 +18,12 @@ export interface TeamTask {
 	updatedAt: string;
 }
 
-function sanitize(name: string): string {
-	return name.replace(/[^a-zA-Z0-9_-]/g, "-");
-}
-
 export function getTaskListDir(teamDir: string, taskListId: string): string {
-	return path.join(teamDir, "tasks", sanitize(taskListId));
+	return path.join(teamDir, "tasks", sanitizeName(taskListId));
 }
 
 function taskPath(taskListDir: string, taskId: string): string {
-	return path.join(taskListDir, `${sanitize(taskId)}.json`);
+	return path.join(taskListDir, `${sanitizeName(taskId)}.json`);
 }
 
 async function ensureDir(p: string): Promise<void> {

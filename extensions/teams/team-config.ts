@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { withLock } from "./fs-lock.js";
+import { sanitizeName } from "./names.js";
 
 export interface TeamMember {
 	name: string;
@@ -25,10 +26,6 @@ export interface TeamConfig {
 	createdAt: string;
 	updatedAt: string;
 	members: TeamMember[];
-}
-
-function sanitize(name: string): string {
-	return name.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
 export function getTeamConfigPath(teamDir: string): string {
@@ -63,7 +60,7 @@ function coerceMember(obj: any): TeamMember | null {
 	if (typeof obj.addedAt !== "string") return null;
 
 	return {
-		name: sanitize(obj.name),
+		name: sanitizeName(obj.name),
 		role: obj.role,
 		status: obj.status,
 		addedAt: obj.addedAt,
@@ -89,7 +86,7 @@ function coerceConfig(obj: any): TeamConfig | null {
 		version: 1,
 		teamId: obj.teamId,
 		taskListId: obj.taskListId,
-		leadName: sanitize(obj.leadName),
+		leadName: sanitizeName(obj.leadName),
 		createdAt: obj.createdAt,
 		updatedAt: obj.updatedAt,
 		members,
@@ -119,12 +116,12 @@ export async function ensureTeamConfig(teamDir: string, init: { teamId: string; 
 				version: 1,
 				teamId: init.teamId,
 				taskListId: init.taskListId,
-				leadName: sanitize(init.leadName),
+				leadName: sanitizeName(init.leadName),
 				createdAt: now,
 				updatedAt: now,
 				members: [
 					{
-						name: sanitize(init.leadName),
+						name: sanitizeName(init.leadName),
 						role: "lead",
 						addedAt: now,
 						status: "online",
@@ -158,7 +155,7 @@ export async function upsertMember(
 			}
 
 			const now = new Date().toISOString();
-			const name = sanitize(member.name);
+			const name = sanitizeName(member.name);
 			const idx = existing.members.findIndex((m) => m.name === name);
 
 			const nextMember: TeamMember = {
@@ -206,7 +203,7 @@ export async function setMemberStatus(
 			const existing = coerceConfig(await readJson(file));
 			if (!existing) return null;
 
-			const name = sanitize(memberName);
+			const name = sanitizeName(memberName);
 			const idx = existing.members.findIndex((m) => m.name === name);
 			if (idx < 0) return existing;
 
