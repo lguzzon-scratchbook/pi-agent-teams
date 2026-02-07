@@ -17,7 +17,8 @@
     "access": "public"
   },
   "pi": {
-    "extensions": ["./extensions"]
+    "extensions": ["./extensions"],
+    "skills": ["./skills"]
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",

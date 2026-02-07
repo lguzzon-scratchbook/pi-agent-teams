@@ -775,9 +775,10 @@ export function runLeader(pi: ExtensionAPI): void {
 		name: "teams",
 		label: "Teams",
 		description: [
-			"Spawn teammates and delegate tasks using Claude-like primitives (task list + mailbox).",
-			"Defaults match Claude Teams: shared workspace, explicit assignment.",
-			"Options: workspaceMode=worktree (git worktrees), contextMode=branch (clone leader session context).",
+			"Spawn teammate agents and delegate tasks. Each teammate is a child Pi process that executes work autonomously and reports back.",
+			"Provide a list of tasks with optional assignees; teammates are spawned automatically and assigned round-robin if unspecified.",
+			"Options: contextMode=branch (clone session context), workspaceMode=worktree (git worktree isolation).",
+			"For governance, the user can run /team delegate on (leader restricted to coordination) or /team spawn <name> plan (worker needs plan approval).",
 		].join(" "),
 		parameters: TeamsToolParams,
 
