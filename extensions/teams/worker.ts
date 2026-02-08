@@ -1,6 +1,6 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage, AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import { randomUUID } from "node:crypto";
 import { popUnreadMessages, writeToMailbox } from "./mailbox.js";
 import { sanitizeName } from "./names.js";
@@ -116,15 +116,27 @@ export function runWorker(pi: ExtensionAPI): void {
 
 	const { teamId, teamDir, taskListId, agentName, leadName, autoClaim } = env;
 
+	const TeamMessageToolParamsSchema = Type.Object({
+		recipient: Type.String({ description: "Name of the teammate to message" }),
+		message: Type.String({ description: "The message to send" }),
+	});
+	// Match the schema at compile-time.
+	type TeamMessageToolParams = Static<typeof TeamMessageToolParamsSchema>;
+	// Tool result details to match AgentToolResult<TDetails> contract.
+	type TeamMessageToolDetails = { recipient: string; timestamp: string };
+
 	pi.registerTool({
 		name: "team_message",
 		label: "Team Message",
 		description: "Send a message to a teammate. Use this to coordinate with peers on related tasks.",
-		parameters: Type.Object({
-			recipient: Type.String({ description: "Name of the teammate to message" }),
-			message: Type.String({ description: "The message to send" }),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		parameters: TeamMessageToolParamsSchema,
+		async execute(
+			_toolCallId,
+			params: TeamMessageToolParams,
+			_signal,
+			_onUpdate,
+			_ctx,
+		): Promise<AgentToolResult<TeamMessageToolDetails>> {
 			const recipient = sanitizeName(params.recipient);
 			const message = params.message;
 			const ts = new Date().toISOString();
