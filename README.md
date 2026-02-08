@@ -25,7 +25,7 @@ Additional Pi-specific capabilities:
 The extension supports two UI styles:
 
 - **normal** (default): "Team leader" + "Teammate <name>"
-- **soviet**: "Chairman" + "Comrade <name>" (the system decides names for you — run `/team spawn` without a name)
+- **soviet**: "Chairman" + "Comrade <name>" (in soviet mode, the system decides names for you)
 
 Configure via:
 - env: `PI_TEAMS_STYLE=normal|soviet`

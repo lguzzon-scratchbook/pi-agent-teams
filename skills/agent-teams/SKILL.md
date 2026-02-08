@@ -18,7 +18,7 @@ Spawn and coordinate teammate agents that work in parallel on shared task lists,
 
 Two styles:
 - `normal` (default): Team leader + Teammate <name>
-- `soviet`: Chairman + Comrade <name> (the system decides names for you — run `/team spawn` without a name)
+- `soviet`: Chairman + Comrade <name> (in soviet mode, the system decides names for you)
 
 Configure via `PI_TEAMS_STYLE=normal|soviet` or `/team style <normal|soviet>`.
 
