@@ -359,7 +359,9 @@ export function runLeader(pi: ExtensionAPI): void {
 	pi.on("session_start", async (_event, ctx) => {
 		currentCtx = ctx as ExtensionCommandContext;
 		currentTeamId = currentCtx.sessionManager.getSessionId();
-		if (!taskListId) taskListId = currentTeamId;
+		// Keep the task list aligned with the active session. If you want a shared namespace,
+		// use `/team task use <taskListId>` after switching.
+		taskListId = currentTeamId;
 
 		// Claude-style: a persisted team config file.
 		await ensureTeamConfig(getTeamDir(currentTeamId), {
@@ -404,7 +406,9 @@ export function runLeader(pi: ExtensionAPI): void {
 
 		currentCtx = ctx as ExtensionCommandContext;
 		currentTeamId = currentCtx.sessionManager.getSessionId();
-		if (!taskListId) taskListId = currentTeamId;
+		// Keep the task list aligned with the active session. If you want a shared namespace,
+		// use `/team task use <taskListId>` after switching.
+		taskListId = currentTeamId;
 
 		await ensureTeamConfig(getTeamDir(currentTeamId), {
 			teamId: currentTeamId,
