@@ -3,13 +3,11 @@ import type { TeamTask, TaskStatus } from "./task-store.js";
 import type { TeammateRpc } from "./teammate-rpc.js";
 
 function countTasks(tasks: TeamTask[]): Record<TaskStatus, number> {
-	return tasks.reduce(
-		(acc, t) => {
-			acc[t.status] = (acc[t.status] ?? 0) + 1;
-			return acc;
-		},
-		{ pending: 0, in_progress: 0, completed: 0 } as Record<TaskStatus, number>,
-	);
+	const init: Record<TaskStatus, number> = { pending: 0, in_progress: 0, completed: 0 };
+	for (const t of tasks) {
+		init[t.status] = (init[t.status] ?? 0) + 1;
+	}
+	return init;
 }
 
 export function buildTeamsWidgetLines(opts: {
@@ -60,13 +58,17 @@ export function buildTeamsWidgetLines(opts: {
 		const taskTag = active ? `task:${active.id}` : "";
 
 		if (rpc) {
-			const status = rpc.status.padEnd(9);
-			const tail = rpc.lastAssistantText.trim().split("\n").slice(-1)[0];
+			// RPC status only reflects streaming state. If the task list says this agent is actively
+			// working a task, surface that as "working" so the widget matches the task list.
+			const statusText = active && rpc.status === "idle" ? "working" : rpc.status;
+			const status = statusText.padEnd(9);
+			const tail = rpc.lastAssistantText.trim().split("\n").at(-1) ?? "";
 			lines.push(
 				`  ${name}: ${status} ${taskTag ? "• " + taskTag + " " : ""}${tail ? "• " + tail.slice(0, 60) : ""}`,
 			);
 		} else {
-			const status = (cfg?.status ?? "offline").padEnd(9);
+			const statusText = active ? "working" : (cfg?.status ?? "offline");
+			const status = statusText.padEnd(9);
 			const seen = cfg?.lastSeenAt ? `• seen ${cfg.lastSeenAt.slice(11, 19)}` : "";
 			lines.push(`  ${name}: ${status} ${taskTag ? "• " + taskTag : ""} ${seen}`.trimEnd());
 		}
