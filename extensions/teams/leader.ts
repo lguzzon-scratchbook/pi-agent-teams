@@ -562,6 +562,7 @@ export function runLeader(pi: ExtensionAPI): void {
 						ctx,
 						teammates,
 						getTeamConfig: () => teamConfig,
+						style,
 						refreshTasks,
 						renderWidget,
 					});
@@ -569,7 +570,12 @@ export function runLeader(pi: ExtensionAPI): void {
 				}
 
 				case "id": {
-					await handleTeamIdCommand({ ctx, taskListId });
+					await handleTeamIdCommand({
+						ctx,
+						taskListId,
+						leadName: teamConfig?.leadName ?? "team-lead",
+						style,
+					});
 					return;
 				}
 
@@ -578,6 +584,8 @@ export function runLeader(pi: ExtensionAPI): void {
 						ctx,
 						rest,
 						taskListId,
+						leadName: teamConfig?.leadName ?? "team-lead",
+						style,
 						getTeamsExtensionEntryPath,
 						shellQuote,
 					});
@@ -772,6 +780,8 @@ export function runLeader(pi: ExtensionAPI): void {
 					await handleTeamTaskCommand({
 						ctx,
 						rest,
+						leadName: teamConfig?.leadName ?? "team-lead",
+						style,
 						getTaskListId: () => taskListId,
 						setTaskListId: (id) => {
 							taskListId = id;
@@ -789,6 +799,8 @@ export function runLeader(pi: ExtensionAPI): void {
 					await handleTeamPlanCommand({
 						ctx,
 						rest,
+						leadName: teamConfig?.leadName ?? "team-lead",
+						style,
 						pendingPlanApprovals,
 					});
 					return;

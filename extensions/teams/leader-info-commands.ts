@@ -3,15 +3,19 @@ import { sanitizeName } from "./names.js";
 import { getTeamDir, getTeamsRootDir } from "./paths.js";
 import type { TeammateRpc } from "./teammate-rpc.js";
 import type { TeamConfig, TeamMember } from "./team-config.js";
+import type { TeamsStyle } from "./teams-style.js";
+import { formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 
 export async function handleTeamListCommand(opts: {
 	ctx: ExtensionCommandContext;
 	teammates: Map<string, TeammateRpc>;
 	getTeamConfig: () => TeamConfig | null;
+	style: TeamsStyle;
 	refreshTasks: () => Promise<void>;
 	renderWidget: () => void;
 }): Promise<void> {
-	const { ctx, teammates, getTeamConfig, refreshTasks, renderWidget } = opts;
+	const { ctx, teammates, getTeamConfig, style, refreshTasks, renderWidget } = opts;
+	const strings = getTeamsStrings(style);
 
 	await refreshTasks();
 
@@ -25,7 +29,7 @@ export async function handleTeamListCommand(opts: {
 	for (const name of cfgByName.keys()) names.add(name);
 
 	if (names.size === 0) {
-		ctx.ui.notify("No comrades", "info");
+		ctx.ui.notify(`No ${strings.memberTitle.toLowerCase()}s`, "info");
 		renderWidget();
 		return;
 	}
@@ -36,7 +40,7 @@ export async function handleTeamListCommand(opts: {
 		const cfg = cfgByName.get(name);
 		const status = rpc ? rpc.status : cfg?.status ?? "offline";
 		const kind = rpc ? "rpc" : cfg ? "manual" : "unknown";
-		lines.push(`${name}: ${status} (${kind})`);
+		lines.push(`${formatMemberDisplayName(style, name)}: ${status} (${kind})`);
 	}
 
 	ctx.ui.notify(lines.join("\n"), "info");
@@ -46,12 +50,13 @@ export async function handleTeamListCommand(opts: {
 export async function handleTeamIdCommand(opts: {
 	ctx: ExtensionCommandContext;
 	taskListId: string | null;
+	leadName: string;
+	style: TeamsStyle;
 }): Promise<void> {
-	const { ctx, taskListId } = opts;
+	const { ctx, taskListId, leadName, style } = opts;
 
 	const teamId = ctx.sessionManager.getSessionId();
 	const effectiveTlId = taskListId ?? teamId;
-	const leadName = "chairman";
 	const teamsRoot = getTeamsRootDir();
 	const teamDir = getTeamDir(teamId);
 
@@ -60,6 +65,7 @@ export async function handleTeamIdCommand(opts: {
 			`teamId: ${teamId}`,
 			`taskListId: ${effectiveTlId}`,
 			`leadName: ${leadName}`,
+			`style: ${style}`,
 			`teamsRoot: ${teamsRoot}`,
 			`teamDir: ${teamDir}`,
 		].join("\n"),
@@ -71,10 +77,12 @@ export async function handleTeamEnvCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
 	taskListId: string | null;
+	leadName: string;
+	style: TeamsStyle;
 	getTeamsExtensionEntryPath: () => string | null;
 	shellQuote: (v: string) => string;
 }): Promise<void> {
-	const { ctx, rest, taskListId, getTeamsExtensionEntryPath, shellQuote } = opts;
+	const { ctx, rest, taskListId, leadName, style, getTeamsExtensionEntryPath, shellQuote } = opts;
 
 	const nameRaw = rest[0];
 	if (!nameRaw) {
@@ -85,7 +93,6 @@ export async function handleTeamEnvCommand(opts: {
 	const name = sanitizeName(nameRaw);
 	const teamId = ctx.sessionManager.getSessionId();
 	const effectiveTlId = taskListId ?? teamId;
-	const leadName = "chairman";
 	const teamsRoot = getTeamsRootDir();
 	const teamDir = getTeamDir(teamId);
 	const autoClaim = (process.env.PI_TEAMS_DEFAULT_AUTO_CLAIM ?? "1") === "1" ? "1" : "0";
@@ -100,6 +107,7 @@ export async function handleTeamEnvCommand(opts: {
 		PI_TEAMS_TASK_LIST_ID: effectiveTlId,
 		PI_TEAMS_AGENT_NAME: name,
 		PI_TEAMS_LEAD_NAME: leadName,
+		PI_TEAMS_STYLE: style,
 		PI_TEAMS_AUTO_CLAIM: autoClaim,
 	};
 

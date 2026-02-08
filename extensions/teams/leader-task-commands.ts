@@ -16,10 +16,14 @@ import {
 	type TeamTask,
 } from "./task-store.js";
 import { ensureTeamConfig } from "./team-config.js";
+import type { TeamsStyle } from "./teams-style.js";
+import { formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 
 export async function handleTeamTaskCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	leadName: string;
+	style: TeamsStyle;
 	getTaskListId: () => string | null;
 	setTaskListId: (id: string) => void;
 	getTasks: () => TeamTask[];
@@ -31,6 +35,8 @@ export async function handleTeamTaskCommand(opts: {
 	const {
 		ctx,
 		rest,
+		leadName,
+		style,
 		getTaskListId,
 		setTaskListId,
 		getTasks,
@@ -39,6 +45,7 @@ export async function handleTeamTaskCommand(opts: {
 		parseAssigneePrefix,
 		taskAssignmentPayload,
 	} = opts;
+	const strings = getTeamsStrings(style);
 
 	const [taskSub, ...taskRest] = rest;
 	const teamId = ctx.sessionManager.getSessionId();
@@ -83,15 +90,18 @@ export async function handleTeamTaskCommand(opts: {
 			const task = await createTask(teamDir, effectiveTlId, { subject, description, owner });
 
 			if (owner) {
-				const payload = taskAssignmentPayload(task, "chairman");
+				const payload = taskAssignmentPayload(task, leadName);
 				await writeToMailbox(teamDir, effectiveTlId, owner, {
-					from: "chairman",
+					from: leadName,
 					text: JSON.stringify(payload),
 					timestamp: new Date().toISOString(),
 				});
 			}
 
-			ctx.ui.notify(`Created task #${task.id}${owner ? ` (assigned to ${owner})` : ""}`, "info");
+			ctx.ui.notify(
+				`Created task #${task.id}${owner ? ` (assigned to ${formatMemberDisplayName(style, owner)})` : ""}`,
+				"info",
+			);
 			await refreshTasks();
 			renderWidget();
 			return;
@@ -118,12 +128,12 @@ export async function handleTeamTaskCommand(opts: {
 			}
 
 			await writeToMailbox(teamDir, effectiveTlId, owner, {
-				from: "chairman",
-				text: JSON.stringify(taskAssignmentPayload(updated, "chairman")),
+				from: leadName,
+				text: JSON.stringify(taskAssignmentPayload(updated, leadName)),
 				timestamp: new Date().toISOString(),
 			});
 
-			ctx.ui.notify(`Assigned task #${updated.id} to ${owner}`, "info");
+			ctx.ui.notify(`Assigned task #${updated.id} to ${formatMemberDisplayName(style, owner)}`, "info");
 			await refreshTasks();
 			renderWidget();
 			return;
@@ -392,7 +402,7 @@ export async function handleTeamTaskCommand(opts: {
 				return;
 			}
 			setTaskListId(newId);
-			await ensureTeamConfig(teamDir, { teamId, taskListId: newId, leadName: "chairman" });
+			await ensureTeamConfig(teamDir, { teamId, taskListId: newId, leadName, style });
 			ctx.ui.notify(`Task list ID set to: ${newId}`, "info");
 			await refreshTasks();
 			renderWidget();

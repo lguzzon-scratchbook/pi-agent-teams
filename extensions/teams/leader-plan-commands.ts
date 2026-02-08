@@ -3,13 +3,17 @@ import { writeToMailbox } from "./mailbox.js";
 import { sanitizeName } from "./names.js";
 import { getTeamDir } from "./paths.js";
 import { TEAM_MAILBOX_NS } from "./protocol.js";
+import type { TeamsStyle } from "./teams-style.js";
+import { formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 
 export async function handleTeamPlanCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	leadName: string;
+	style: TeamsStyle;
 	pendingPlanApprovals: Map<string, { requestId: string; name: string; taskId?: string }>;
 }): Promise<void> {
-	const { ctx, rest, pendingPlanApprovals } = opts;
+	const { ctx, rest, leadName, style, pendingPlanApprovals } = opts;
 
 	const [planSub, ...planRest] = rest;
 	if (!planSub || planSub === "help") {
@@ -41,17 +45,17 @@ export async function handleTeamPlanCommand(opts: {
 		const teamDir = getTeamDir(teamId);
 		const ts = new Date().toISOString();
 		await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-			from: "chairman",
+			from: leadName,
 			text: JSON.stringify({
 				type: "plan_approved",
 				requestId: pending.requestId,
-				from: "chairman",
+				from: leadName,
 				timestamp: ts,
 			}),
 			timestamp: ts,
 		});
 		pendingPlanApprovals.delete(name);
-		ctx.ui.notify(`Approved plan for ${name}`, "info");
+		ctx.ui.notify(`Approved plan for ${formatMemberDisplayName(style, name)}`, "info");
 		return;
 	}
 
@@ -73,18 +77,18 @@ export async function handleTeamPlanCommand(opts: {
 		const teamDir = getTeamDir(teamId);
 		const ts = new Date().toISOString();
 		await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-			from: "chairman",
+			from: leadName,
 			text: JSON.stringify({
 				type: "plan_rejected",
 				requestId: pending.requestId,
-				from: "chairman",
+				from: leadName,
 				feedback,
 				timestamp: ts,
 			}),
 			timestamp: ts,
 		});
 		pendingPlanApprovals.delete(name);
-		ctx.ui.notify(`Rejected plan for ${name}: ${feedback}`, "info");
+		ctx.ui.notify(`Rejected plan for ${formatMemberDisplayName(style, name)}: ${feedback}`, "info");
 		return;
 	}
 

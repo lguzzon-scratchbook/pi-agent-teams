@@ -133,7 +133,8 @@ function spawnWorker(opts: {
 			PI_TEAMS_TEAM_ID: teamId,
 			PI_TEAMS_TASK_LIST_ID: teamId,
 			PI_TEAMS_AGENT_NAME: agentName,
-			PI_TEAMS_LEAD_NAME: "chairman",
+			PI_TEAMS_LEAD_NAME: "team-lead",
+			PI_TEAMS_STYLE: "normal",
 			PI_TEAMS_AUTO_CLAIM: "1",
 			PI_TEAMS_PLAN_REQUIRED: "0",
 		},
@@ -161,7 +162,7 @@ console.log(`TeamId: ${teamId}`);
 console.log(`TeamDir: ${teamDir}`);
 console.log(`Spawning ${agents} worker(s), creating ${tasks} task(s)`);
 
-await ensureTeamConfig(teamDir, { teamId, taskListId: teamId, leadName: "chairman" });
+await ensureTeamConfig(teamDir, { teamId, taskListId: teamId, leadName: "team-lead", style: "normal" });
 
 // Create unowned tasks so at least one must be auto-claimed.
 for (let i = 1; i <= tasks; i += 1) {
