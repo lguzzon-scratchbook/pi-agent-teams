@@ -136,10 +136,15 @@ export function runLeader(pi: ExtensionAPI): void {
 	let tasks: TeamTask[] = [];
 	let teamConfig: TeamConfig | null = null;
 	const pendingPlanApprovals = new Map<string, { requestId: string; name: string; taskId?: string }>();
-	let taskListId: string | null = process.env.PI_TEAMS_TASK_LIST_ID ?? null;
+	// Task list namespace. By default we keep it aligned with the current session id.
+	// (Do NOT read PI_TEAMS_TASK_LIST_ID for the leader; that env var is intended for workers
+	// and can easily be set globally, which makes the leader "lose" its tasks.)
+	let taskListId: string | null = null;
 
 	let refreshTimer: NodeJS.Timeout | null = null;
 	let inboxTimer: NodeJS.Timeout | null = null;
+	let refreshInFlight = false;
+	let inboxInFlight = false;
 	let isStopping = false;
 	let delegateMode = process.env.PI_TEAMS_DELEGATE_MODE === "1";
 
@@ -369,13 +374,25 @@ export function runLeader(pi: ExtensionAPI): void {
 		stopLoops();
 		refreshTimer = setInterval(async () => {
 			if (isStopping) return;
-			await refreshTasks();
-			renderWidget();
+			if (refreshInFlight) return;
+			refreshInFlight = true;
+			try {
+				await refreshTasks();
+				renderWidget();
+			} finally {
+				refreshInFlight = false;
+			}
 		}, 1000);
 
 		inboxTimer = setInterval(async () => {
 			if (isStopping) return;
-			await pollLeaderInbox();
+			if (inboxInFlight) return;
+			inboxInFlight = true;
+			try {
+				await pollLeaderInbox();
+			} finally {
+				inboxInFlight = false;
+			}
 		}, 700);
 	});
 
@@ -401,13 +418,25 @@ export function runLeader(pi: ExtensionAPI): void {
 		// Restart background refresh/poll loops for the new session.
 		refreshTimer = setInterval(async () => {
 			if (isStopping) return;
-			await refreshTasks();
-			renderWidget();
+			if (refreshInFlight) return;
+			refreshInFlight = true;
+			try {
+				await refreshTasks();
+				renderWidget();
+			} finally {
+				refreshInFlight = false;
+			}
 		}, 1000);
 
 		inboxTimer = setInterval(async () => {
 			if (isStopping) return;
-			await pollLeaderInbox();
+			if (inboxInFlight) return;
+			inboxInFlight = true;
+			try {
+				await pollLeaderInbox();
+			} finally {
+				inboxInFlight = false;
+			}
 		}, 700);
 	});
 
