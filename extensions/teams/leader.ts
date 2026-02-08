@@ -11,7 +11,9 @@ import { TeammateRpc } from "./teammate-rpc.js";
 import { ensureTeamConfig, loadTeamConfig, setMemberStatus, upsertMember, type TeamConfig } from "./team-config.js";
 import { getTeamDir, getTeamsRootDir } from "./paths.js";
 import { ensureWorktreeCwd } from "./worktree.js";
-import { buildTeamsWidgetLines } from "./leader-widget.js";
+import { ActivityTracker } from "./activity-tracker.js";
+import { openTeamsPanel } from "./teams-panel.js";
+import { createTeamsWidget } from "./teams-widget.js";
 import { pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
 import { handleTeamTaskCommand } from "./leader-task-commands.js";
 import { handleTeamPlanCommand } from "./leader-plan-commands.js";
@@ -131,6 +133,8 @@ function taskAssignmentPayload(task: TeamTask, assignedBy: string) {
 // Message parsers are shared with the worker implementation.
 export function runLeader(pi: ExtensionAPI): void {
 	const teammates = new Map<string, TeammateRpc>();
+	const tracker = new ActivityTracker();
+	const teammateEventUnsubs = new Map<string, () => void>();
 	let currentCtx: ExtensionCommandContext | null = null;
 	let currentTeamId: string | null = null;
 	let tasks: TeamTask[] = [];
@@ -160,6 +164,14 @@ export function runLeader(pi: ExtensionAPI): void {
 		isStopping = true;
 		try {
 			for (const [name, t] of teammates.entries()) {
+				try {
+					teammateEventUnsubs.get(name)?.();
+				} catch {
+					// ignore
+				}
+				teammateEventUnsubs.delete(name);
+				tracker.reset(name);
+
 				await t.stop();
 				// Claude-style: unassign non-completed tasks on exit.
 				const teamId = ctx.sessionManager.getSessionId();
@@ -173,6 +185,14 @@ export function runLeader(pi: ExtensionAPI): void {
 			isStopping = false;
 		}
 	};
+
+	const widgetFactory = createTeamsWidget({
+		getTeammates: () => teammates,
+		getTracker: () => tracker,
+		getTasks: () => tasks,
+		getTeamConfig: () => teamConfig,
+		isDelegateMode: () => delegateMode,
+	});
 
 	const refreshTasks = async () => {
 		if (!currentCtx || !currentTeamId) return;
@@ -192,13 +212,8 @@ export function runLeader(pi: ExtensionAPI): void {
 
 	const renderWidget = () => {
 		if (!currentCtx) return;
-		const lines = buildTeamsWidgetLines({
-			delegateMode,
-			tasks,
-			teammates,
-			teamConfig,
-		});
-		currentCtx.ui.setWidget("pi-teams", lines);
+		// Component widget (more informative + styled). Re-setting it is also our "refresh" trigger.
+		currentCtx.ui.setWidget("pi-teams", widgetFactory);
 	};
 
 	type SpawnTeammateResult =
@@ -234,13 +249,25 @@ export function runLeader(pi: ExtensionAPI): void {
 
 		const t = new TeammateRpc(name, sessionFile);
 		teammates.set(name, t);
+		// Track teammate activity for the widget/panel.
+		const unsub = t.onEvent((ev) => tracker.handleEvent(name, ev));
+		teammateEventUnsubs.set(name, unsub);
 		renderWidget();
 
 		// On crash/close, unassign tasks like Claude.
 		const leaderSessionId = teamId;
 		t.onClose((code) => {
+			try {
+				teammateEventUnsubs.get(name)?.();
+			} catch {
+				// ignore
+			}
+			teammateEventUnsubs.delete(name);
+			tracker.reset(name);
+
 			if (currentCtx?.sessionManager.getSessionId() !== leaderSessionId) return;
-			void unassignTasksForAgent(teamDir, leaderSessionId, name, `Teammate '${name}' exited`).finally(() => {
+			const effectiveTlId = taskListId ?? leaderSessionId;
+			void unassignTasksForAgent(teamDir, effectiveTlId, name, `Teammate '${name}' exited`).finally(() => {
 				void refreshTasks().finally(renderWidget);
 			});
 			void setMemberStatus(teamDir, name, "offline", { meta: { exitCode: code ?? undefined } });
@@ -474,6 +501,7 @@ export function runLeader(pi: ExtensionAPI): void {
 						"  /team id",
 						"  /team env <name>",
 						"  /team spawn <name> [fresh|branch] [shared|worktree] [plan]",
+						"  /team panel",
 						"  /team send <name> <msg...>",
 						"  /team dm <name> <msg...>",
 						"  /team broadcast <msg...>",
@@ -567,6 +595,16 @@ export function runLeader(pi: ExtensionAPI): void {
 
 				case "spawn": {
 					await handleTeamSpawnCommand({ ctx, rest, spawnTeammate });
+					return;
+				}
+
+				case "panel": {
+					await openTeamsPanel(ctx, {
+						getTeammates: () => teammates,
+						getTracker: () => tracker,
+						getTasks: () => tasks,
+						getTeamConfig: () => teamConfig,
+					});
 					return;
 				}
 
