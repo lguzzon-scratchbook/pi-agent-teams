@@ -107,7 +107,7 @@ export function createTeamsWidget(deps: WidgetDeps): WidgetFactory {
 
 				if (visibleNames.size === 0) {
 					lines.push(
-						truncateToWidth(" " + theme.fg("dim", "(no teammates)  /team spawn <name>"), width),
+						truncateToWidth(" " + theme.fg("dim", "(no comrades)  /team spawn <name>"), width),
 					);
 				} else {
 					for (const name of Array.from(visibleNames).sort()) {
@@ -119,7 +119,8 @@ export function createTeamsWidget(deps: WidgetDeps): WidgetFactory {
 						const statusKey = resolveStatus(rpc, cfg);
 
 						const icon = theme.fg(STATUS_COLOR[statusKey], STATUS_ICON[statusKey]);
-						const styledName = theme.bold(name);
+						const displayName = `Comrade ${name}`;
+						const styledName = theme.bold(displayName);
 						const statusLabel = theme.fg(STATUS_COLOR[statusKey], padRight(statusKey, 9));
 						const taskTag = active ? " " + theme.fg("muted", `task:#${String(active.id)}`) : "";
 						const toolLabel = activity.currentToolName
@@ -128,7 +129,7 @@ export function createTeamsWidget(deps: WidgetDeps): WidgetFactory {
 						const toolCount =
 							activity.toolUseCount > 0 ? "  " + theme.fg("dim", `(${String(activity.toolUseCount)} tools)`) : "";
 
-						const row = ` ${icon} ${padRight(styledName, 10)} ${statusLabel}${taskTag}${toolLabel}${toolCount}`;
+						const row = ` ${icon} ${padRight(styledName, 20)} ${statusLabel}${taskTag}${toolLabel}${toolCount}`;
 						lines.push(truncateToWidth(row, width));
 					}
 				}

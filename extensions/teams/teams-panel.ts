@@ -82,17 +82,18 @@ export async function openTeamsPanel(ctx: ExtensionCommandContext, deps: PanelDe
 						const active = deps.getTasks().find((x: TeamTask) => x.owner === name && x.status === "in_progress");
 						const statusKey = resolveStatus(rpc, cfg);
 
+						const displayName = `Comrade ${name}`;
 						const selected = i === selectedIndex;
 						const pointer = selected ? theme.fg("accent", "▸") : " ";
 						const icon = theme.fg(STATUS_COLOR[statusKey], STATUS_ICON[statusKey]);
-						const styledName = selected ? theme.bold(theme.fg("accent", name)) : theme.bold(name);
+						const styledName = selected ? theme.bold(theme.fg("accent", displayName)) : theme.bold(displayName);
 						const statusLabel = theme.fg(STATUS_COLOR[statusKey], statusKey);
 						const taskTag = active ? theme.fg("muted", ` task:#${String(active.id)}`) : "";
 						const toolLabel = activity.currentToolName ? " " + theme.fg("warning", activity.currentToolName) : "";
 						const toolCount =
 							activity.toolUseCount > 0 ? " " + theme.fg("dim", `(${String(activity.toolUseCount)})`) : "";
 
-						const row = ` ${pointer} ${icon} ${padRight(styledName, 12)} ${statusLabel}${taskTag}${toolLabel}${toolCount}`;
+						const row = ` ${pointer} ${icon} ${padRight(styledName, 20)} ${statusLabel}${taskTag}${toolLabel}${toolCount}`;
 						lines.push(
 							theme.fg("border", "│") +
 							truncateToWidth(padRight(row, innerW + 2), innerW + 2) +
