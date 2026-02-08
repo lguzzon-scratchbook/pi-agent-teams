@@ -28,11 +28,11 @@ console.log("tmpRoot:", tmpRoot);
 // Team config
 // -----------------------------------------------------------------------------
 {
-	const cfg = await teamConfig.ensureTeamConfig(teamDir, { teamId, taskListId, leadName: "team-lead" });
+	const cfg = await teamConfig.ensureTeamConfig(teamDir, { teamId, taskListId, leadName: "chairman" });
 	assert.equal(cfg.teamId, teamId);
 	assert.equal(cfg.taskListId, taskListId);
-	assert.equal(cfg.leadName, "team-lead");
-	assert.ok(cfg.members.find((m) => m.name === "team-lead" && m.role === "lead"));
+	assert.equal(cfg.leadName, "chairman");
+	assert.ok(cfg.members.find((m) => m.name === "chairman" && m.role === "lead"));
 
 	await teamConfig.upsertMember(teamDir, { name: "alice", role: "worker", status: "online" });
 	const cfg2 = await teamConfig.loadTeamConfig(teamDir);
@@ -49,17 +49,17 @@ console.log("tmpRoot:", tmpRoot);
 // Mailbox
 // -----------------------------------------------------------------------------
 {
-	await mailbox.writeToMailbox(teamDir, "team", "team-lead", {
+	await mailbox.writeToMailbox(teamDir, "team", "chairman", {
 		from: "alice",
 		text: JSON.stringify({ type: "idle_notification", from: "alice", timestamp: new Date().toISOString() }),
 		timestamp: new Date().toISOString(),
 	});
 
-	const msgs = await mailbox.popUnreadMessages(teamDir, "team", "team-lead");
+	const msgs = await mailbox.popUnreadMessages(teamDir, "team", "chairman");
 	assert.equal(msgs.length, 1);
 	assert.equal(msgs[0].from, "alice");
 
-	const msgs2 = await mailbox.popUnreadMessages(teamDir, "team", "team-lead");
+	const msgs2 = await mailbox.popUnreadMessages(teamDir, "team", "chairman");
 	assert.equal(msgs2.length, 0);
 }
 

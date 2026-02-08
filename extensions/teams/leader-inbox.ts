@@ -22,7 +22,7 @@ export async function pollLeaderInbox(opts: {
 
 	let msgs: Awaited<ReturnType<typeof popUnreadMessages>>;
 	try {
-		msgs = await popUnreadMessages(teamDir, TEAM_MAILBOX_NS, "team-lead");
+		msgs = await popUnreadMessages(teamDir, TEAM_MAILBOX_NS, "chairman");
 	} catch (err: unknown) {
 		ctx.ui.notify(err instanceof Error ? err.message : String(err), "warning");
 		return;
@@ -36,7 +36,7 @@ export async function pollLeaderInbox(opts: {
 			const cfg = await ensureTeamConfig(teamDir, {
 				teamId,
 				taskListId,
-				leadName: "team-lead",
+				leadName: "chairman",
 			});
 			if (!cfg.members.some((mm) => mm.name === name)) {
 				await upsertMember(teamDir, { name, role: "worker", status: "offline" });
@@ -92,7 +92,7 @@ export async function pollLeaderInbox(opts: {
 				const cfg = await ensureTeamConfig(teamDir, {
 					teamId,
 					taskListId,
-					leadName: "team-lead",
+					leadName: "chairman",
 				});
 				if (!cfg.members.some((mm) => mm.name === name)) {
 					await upsertMember(teamDir, { name, role: "worker", status: "offline" });
@@ -108,7 +108,7 @@ export async function pollLeaderInbox(opts: {
 				const cfg = await ensureTeamConfig(teamDir, {
 					teamId,
 					taskListId,
-					leadName: "team-lead",
+					leadName: "chairman",
 				});
 
 				const member = cfg.members.find((mm) => mm.name === name);
@@ -136,11 +136,11 @@ export async function pollLeaderInbox(opts: {
 					try {
 						const ts = new Date().toISOString();
 						await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-							from: "team-lead",
+							from: "chairman",
 							text: JSON.stringify({
 								type: "set_session_name",
 								name: desiredSessionName,
-								from: "team-lead",
+								from: "chairman",
 								timestamp: ts,
 							}),
 							timestamp: ts,

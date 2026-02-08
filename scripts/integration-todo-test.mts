@@ -134,7 +134,7 @@ function spawnWorker(opts: {
 			PI_TEAMS_TEAM_ID: teamId,
 			PI_TEAMS_TASK_LIST_ID: teamId,
 			PI_TEAMS_AGENT_NAME: agentName,
-			PI_TEAMS_LEAD_NAME: "team-lead",
+			PI_TEAMS_LEAD_NAME: "chairman",
 			PI_TEAMS_AUTO_CLAIM: "1",
 			PI_TEAMS_PLAN_REQUIRED: "0",
 		},
@@ -454,7 +454,7 @@ console.log("Spawning 3 workers, creating 15 tasks (todo app)");
 
 fs.mkdirSync(workspaceDir, { recursive: true });
 
-await ensureTeamConfig(teamDir, { teamId, taskListId: teamId, leadName: "team-lead" });
+await ensureTeamConfig(teamDir, { teamId, taskListId: teamId, leadName: "chairman" });
 
 // Create tasks first (unowned) then add dependencies.
 const plan = plannedTasks();

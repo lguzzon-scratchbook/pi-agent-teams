@@ -41,11 +41,11 @@ export async function handleTeamPlanCommand(opts: {
 		const teamDir = getTeamDir(teamId);
 		const ts = new Date().toISOString();
 		await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-			from: "team-lead",
+			from: "chairman",
 			text: JSON.stringify({
 				type: "plan_approved",
 				requestId: pending.requestId,
-				from: "team-lead",
+				from: "chairman",
 				timestamp: ts,
 			}),
 			timestamp: ts,
@@ -73,11 +73,11 @@ export async function handleTeamPlanCommand(opts: {
 		const teamDir = getTeamDir(teamId);
 		const ts = new Date().toISOString();
 		await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-			from: "team-lead",
+			from: "chairman",
 			text: JSON.stringify({
 				type: "plan_rejected",
 				requestId: pending.requestId,
-				from: "team-lead",
+				from: "chairman",
 				feedback,
 				timestamp: ts,
 			}),

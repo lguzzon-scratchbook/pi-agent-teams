@@ -135,7 +135,7 @@ console.log("\n2. fs-lock.withLock");
 console.log("\n3. mailbox");
 {
 	await writeToMailbox(teamDir, TEAM_MAILBOX_NS, "agent1", {
-		from: "team-lead",
+		from: "chairman",
 		text: "hello agent1",
 		timestamp: "2025-01-01T00:00:00Z",
 	});
@@ -164,7 +164,7 @@ console.log("\n3. mailbox");
 
 	// multiple messages
 	await writeToMailbox(teamDir, TEAM_MAILBOX_NS, "agent1", {
-		from: "team-lead",
+		from: "chairman",
 		text: "msg2",
 		timestamp: "2025-01-01T00:01:00Z",
 	});
@@ -266,7 +266,7 @@ console.log("\n5. team-config");
 	const cfg = await ensureTeamConfig(teamDir, {
 		teamId: "smoke-team",
 		taskListId: "smoke-tl",
-		leadName: "team-lead",
+		leadName: "chairman",
 	});
 	assertEq(cfg.version, 1, "config version 1");
 	assertEq(cfg.teamId, "smoke-team", "teamId set");
@@ -279,7 +279,7 @@ console.log("\n5. team-config");
 	const cfg2 = await ensureTeamConfig(teamDir, {
 		teamId: "smoke-team",
 		taskListId: "smoke-tl",
-		leadName: "team-lead",
+		leadName: "chairman",
 	});
 	assertEq(cfg2.teamId, cfg.teamId, "ensureTeamConfig idempotent");
 

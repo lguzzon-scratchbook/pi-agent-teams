@@ -51,7 +51,7 @@ export async function handleTeamIdCommand(opts: {
 
 	const teamId = ctx.sessionManager.getSessionId();
 	const effectiveTlId = taskListId ?? teamId;
-	const leadName = "team-lead";
+	const leadName = "chairman";
 	const teamsRoot = getTeamsRootDir();
 	const teamDir = getTeamDir(teamId);
 
@@ -85,7 +85,7 @@ export async function handleTeamEnvCommand(opts: {
 	const name = sanitizeName(nameRaw);
 	const teamId = ctx.sessionManager.getSessionId();
 	const effectiveTlId = taskListId ?? teamId;
-	const leadName = "team-lead";
+	const leadName = "chairman";
 	const teamsRoot = getTeamsRootDir();
 	const teamDir = getTeamDir(teamId);
 	const autoClaim = (process.env.PI_TEAMS_DEFAULT_AUTO_CLAIM ?? "1") === "1" ? "1" : "0";

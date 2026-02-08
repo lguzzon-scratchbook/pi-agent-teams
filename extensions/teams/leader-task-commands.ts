@@ -83,9 +83,9 @@ export async function handleTeamTaskCommand(opts: {
 			const task = await createTask(teamDir, effectiveTlId, { subject, description, owner });
 
 			if (owner) {
-				const payload = taskAssignmentPayload(task, "team-lead");
+				const payload = taskAssignmentPayload(task, "chairman");
 				await writeToMailbox(teamDir, effectiveTlId, owner, {
-					from: "team-lead",
+					from: "chairman",
 					text: JSON.stringify(payload),
 					timestamp: new Date().toISOString(),
 				});
@@ -118,8 +118,8 @@ export async function handleTeamTaskCommand(opts: {
 			}
 
 			await writeToMailbox(teamDir, effectiveTlId, owner, {
-				from: "team-lead",
-				text: JSON.stringify(taskAssignmentPayload(updated, "team-lead")),
+				from: "chairman",
+				text: JSON.stringify(taskAssignmentPayload(updated, "chairman")),
 				timestamp: new Date().toISOString(),
 			});
 
@@ -392,7 +392,7 @@ export async function handleTeamTaskCommand(opts: {
 				return;
 			}
 			setTaskListId(newId);
-			await ensureTeamConfig(teamDir, { teamId, taskListId: newId, leadName: "team-lead" });
+			await ensureTeamConfig(teamDir, { teamId, taskListId: newId, leadName: "chairman" });
 			ctx.ui.notify(`Task list ID set to: ${newId}`, "info");
 			await refreshTasks();
 			renderWidget();

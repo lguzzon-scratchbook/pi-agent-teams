@@ -110,7 +110,7 @@ export function registerTeamsTool(opts: {
 			const teamId = ctx.sessionManager.getSessionId();
 			const teamDir = getTeamDir(teamId);
 			const taskListId = getTaskListId();
-			await ensureTeamConfig(teamDir, { teamId, taskListId: taskListId ?? teamId, leadName: "team-lead" });
+			await ensureTeamConfig(teamDir, { teamId, taskListId: taskListId ?? teamId, leadName: "chairman" });
 
 			let teammateNames: string[] = [];
 			const explicit = params.teammates;
@@ -189,8 +189,8 @@ export function registerTeamsTool(opts: {
 				const task = await createTask(teamDir, effectiveTlId, { subject, description, owner: assignee });
 
 				await writeToMailbox(teamDir, effectiveTlId, assignee, {
-					from: "team-lead",
-					text: JSON.stringify(taskAssignmentPayload(task, "team-lead")),
+					from: "chairman",
+					text: JSON.stringify(taskAssignmentPayload(task, "chairman")),
 					timestamp: new Date().toISOString(),
 				});
 

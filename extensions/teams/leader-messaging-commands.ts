@@ -73,7 +73,7 @@ export async function handleTeamDmCommand(opts: {
 	const name = sanitizeName(nameRaw);
 	const teamId = ctx.sessionManager.getSessionId();
 	await writeToMailbox(getTeamDir(teamId), TEAM_MAILBOX_NS, name, {
-		from: "team-lead",
+		from: "chairman",
 		text: msg,
 		timestamp: new Date().toISOString(),
 	});
@@ -98,7 +98,7 @@ export async function handleTeamBroadcastCommand(opts: {
 
 	const teamId = ctx.sessionManager.getSessionId();
 	const teamDir = getTeamDir(teamId);
-	const leadName = "team-lead";
+	const leadName = "chairman";
 	const taskListId = getTaskListId();
 	const cfg = await ensureTeamConfig(teamDir, { teamId, taskListId: taskListId ?? teamId, leadName });
 
@@ -124,7 +124,7 @@ export async function handleTeamBroadcastCommand(opts: {
 	await Promise.all(
 		names.map((name) =>
 			writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-				from: "team-lead",
+				from: "chairman",
 				text: msg,
 				timestamp: ts,
 			}),

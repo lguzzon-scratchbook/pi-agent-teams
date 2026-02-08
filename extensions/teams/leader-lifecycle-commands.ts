@@ -127,19 +127,19 @@ export async function handleTeamShutdownCommand(opts: {
 		const payload: {
 			type: "shutdown_request";
 			requestId: string;
-			from: "team-lead";
+			from: "chairman";
 			timestamp: string;
 			reason?: string;
 		} = {
 			type: "shutdown_request",
 			requestId,
-			from: "team-lead",
+			from: "chairman",
 			timestamp: ts,
 			...(reason ? { reason } : {}),
 		};
 
 		await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-			from: "team-lead",
+			from: "chairman",
 			text: JSON.stringify(payload),
 			timestamp: ts,
 		});
@@ -220,11 +220,11 @@ export async function handleTeamStopCommand(opts: {
 
 	const ts = new Date().toISOString();
 	await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-		from: "team-lead",
+		from: "chairman",
 		text: JSON.stringify({
 			type: "abort_request",
 			requestId: randomUUID(),
-			from: "team-lead",
+			from: "chairman",
 			taskId,
 			reason: reason || undefined,
 			timestamp: ts,

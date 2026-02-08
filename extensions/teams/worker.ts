@@ -44,7 +44,7 @@ function teamDirFromEnv(): {
 
 	const agentName = sanitizeName(agentNameRaw);
 	const taskListId = process.env.PI_TEAMS_TASK_LIST_ID ?? teamId;
-	const leadName = sanitizeName(process.env.PI_TEAMS_LEAD_NAME ?? "team-lead");
+	const leadName = sanitizeName(process.env.PI_TEAMS_LEAD_NAME ?? "chairman");
 	const autoClaim = (process.env.PI_TEAMS_AUTO_CLAIM ?? "1") === "1";
 
 	return {

@@ -206,7 +206,7 @@ export function runLeader(pi: ExtensionAPI): void {
 			(await ensureTeamConfig(teamDir, {
 				teamId: currentTeamId,
 				taskListId: effectiveTaskListId,
-				leadName: "team-lead",
+				leadName: "chairman",
 			}));
 	};
 
@@ -314,7 +314,7 @@ export function runLeader(pi: ExtensionAPI): void {
 					PI_TEAMS_TEAM_ID: teamId,
 					PI_TEAMS_TASK_LIST_ID: taskListId ?? teamId,
 					PI_TEAMS_AGENT_NAME: name,
-					PI_TEAMS_LEAD_NAME: "team-lead",
+					PI_TEAMS_LEAD_NAME: "chairman",
 					PI_TEAMS_AUTO_CLAIM: autoClaim ? "1" : "0",
 					...(opts.planRequired ? { PI_TEAMS_PLAN_REQUIRED: "1" } : {}),
 				},
@@ -338,15 +338,15 @@ export function runLeader(pi: ExtensionAPI): void {
 		try {
 			const ts = new Date().toISOString();
 			await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-				from: "team-lead",
-				text: JSON.stringify({ type: "set_session_name", name: sessionName, from: "team-lead", timestamp: ts }),
+				from: "chairman",
+				text: JSON.stringify({ type: "set_session_name", name: sessionName, from: "chairman", timestamp: ts }),
 				timestamp: ts,
 			});
 		} catch {
 			// ignore
 		}
 
-		await ensureTeamConfig(teamDir, { teamId, taskListId: taskListId ?? teamId, leadName: "team-lead" });
+		await ensureTeamConfig(teamDir, { teamId, taskListId: taskListId ?? teamId, leadName: "chairman" });
 		await upsertMember(teamDir, {
 			name,
 			role: "worker",
@@ -394,7 +394,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		await ensureTeamConfig(getTeamDir(currentTeamId), {
 			teamId: currentTeamId,
 			taskListId: taskListId,
-			leadName: "team-lead",
+			leadName: "chairman",
 		});
 
 		await refreshTasks();
@@ -440,7 +440,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		await ensureTeamConfig(getTeamDir(currentTeamId), {
 			teamId: currentTeamId,
 			taskListId: taskListId,
-			leadName: "team-lead",
+			leadName: "chairman",
 		});
 
 		await refreshTasks();
