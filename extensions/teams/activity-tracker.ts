@@ -1,12 +1,17 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 
-type TrackedEventType = "tool_execution_start" | "tool_execution_end" | "agent_end";
+type TrackedEventType = "tool_execution_start" | "tool_execution_end" | "agent_end" | "message_end";
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+	return typeof v === "object" && v !== null;
+}
 
 export interface TeammateActivity {
 	toolUseCount: number;
 	currentToolName: string | null;
 	lastToolName: string | null;
 	turnCount: number;
+	totalTokens: number;
 	recentEvents: Array<{ type: TrackedEventType; toolName?: string; timestamp: number }>;
 }
 
@@ -18,6 +23,7 @@ function emptyActivity(): TeammateActivity {
 		currentToolName: null,
 		lastToolName: null,
 		turnCount: 0,
+		totalTokens: 0,
 		recentEvents: [],
 	};
 }
@@ -50,6 +56,16 @@ export class ActivityTracker {
 			a.turnCount++;
 			a.recentEvents.push({ type: ev.type, timestamp: now });
 			if (a.recentEvents.length > MAX_RECENT) a.recentEvents.shift();
+			return;
+		}
+
+		if (ev.type === "message_end") {
+			const msg: unknown = ev.message;
+			if (!isRecord(msg)) return;
+			const usage = msg.usage;
+			if (!isRecord(usage)) return;
+			const totalTokens = usage.totalTokens;
+			if (typeof totalTokens === "number") a.totalTokens += totalTokens;
 		}
 	}
 

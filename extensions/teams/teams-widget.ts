@@ -3,7 +3,7 @@ import type { Component, TUI } from "@mariozechner/pi-tui";
 import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 import type { TeammateRpc, TeammateStatus } from "./teammate-rpc.js";
 import type { ActivityTracker } from "./activity-tracker.js";
-import type { TeamTask, TaskStatus } from "./task-store.js";
+import type { TeamTask } from "./task-store.js";
 import type { TeamConfig, TeamMember } from "./team-config.js";
 
 export interface WidgetDeps {
@@ -15,14 +15,6 @@ export interface WidgetDeps {
 }
 
 export type WidgetFactory = (tui: TUI, theme: Theme) => Component;
-
-function countTasks(tasks: TeamTask[]): Record<TaskStatus, number> {
-	const init: Record<TaskStatus, number> = { pending: 0, in_progress: 0, completed: 0 };
-	for (const t of tasks) {
-		init[t.status] = (init[t.status] ?? 0) + 1;
-	}
-	return init;
-}
 
 // Status icon and color mapping
 const STATUS_ICON: Record<TeammateStatus, string> = {
@@ -56,7 +48,6 @@ export function createTeamsWidget(deps: WidgetDeps): WidgetFactory {
 		return {
 			render(width: number): string[] {
 				const teammates = deps.getTeammates();
-				const tracker = deps.getTracker();
 				const tasks = deps.getTasks();
 				const teamConfig = deps.getTeamConfig();
 				const delegateMode = deps.isDelegateMode();
@@ -72,24 +63,9 @@ export function createTeamsWidget(deps: WidgetDeps): WidgetFactory {
 				const lines: string[] = [];
 
 				// ── Header line ──
-				const c = countTasks(tasks);
 				let header = " " + theme.bold(theme.fg("accent", "Teams"));
 				if (delegateMode) header += " " + theme.fg("warning", "[delegate]");
-
-				const counts: string[] = [];
-				if (c.pending > 0) counts.push(theme.fg("muted", `pending:${String(c.pending)}`));
-				if (c.in_progress > 0) counts.push(theme.fg("warning", `active:${String(c.in_progress)}`));
-				if (c.completed > 0) counts.push(theme.fg("success", `done:${String(c.completed)}`));
-				const countStr = counts.length > 0 ? "  " + counts.join("  ") : "";
-
-				// Right-align counts
-				const headerLeft = header;
-				const headerLeftW = visibleWidth(headerLeft);
-				const countStrW = visibleWidth(countStr);
-				const gap = Math.max(1, width - headerLeftW - countStrW - 1);
-				const headerLine = headerLeft + " ".repeat(gap) + countStr;
-
-				lines.push(truncateToWidth(headerLine, width));
+				lines.push(truncateToWidth(header, width));
 
 				// ── Teammate rows ──
 				const cfgWorkers = (teamConfig?.members ?? []).filter((m) => m.role === "worker");
@@ -113,28 +89,51 @@ export function createTeamsWidget(deps: WidgetDeps): WidgetFactory {
 					const sortedNames = Array.from(visibleNames).sort();
 					const nameColWidth = Math.max(...sortedNames.map((n) => visibleWidth(`Comrade ${n}`)));
 
+					// Per-comrade task counts
+					const perOwner = new Map<string, { pending: number; completed: number }>();
+					for (const name of sortedNames) {
+						const owned = tasks.filter((t) => t.owner === name);
+						perOwner.set(name, {
+							pending: owned.filter((t) => t.status === "pending").length,
+							completed: owned.filter((t) => t.status === "completed").length,
+						});
+					}
+					const totalPending = tasks.filter((t) => t.status === "pending").length;
+					const totalCompleted = tasks.filter((t) => t.status === "completed").length;
+
+					// Column widths for number alignment
+					const allPendingNums = [...Array.from(perOwner.values()).map((v) => v.pending), totalPending];
+					const allCompletedNums = [...Array.from(perOwner.values()).map((v) => v.completed), totalCompleted];
+					const pW = Math.max(...allPendingNums.map((n) => String(n).length));
+					const cW = Math.max(...allCompletedNums.map((n) => String(n).length));
+
 					for (const name of sortedNames) {
 						const rpc = teammates.get(name);
 						const cfg = cfgByName.get(name);
-						const activity = tracker.get(name);
-
-						const active = tasks.find((x) => x.owner === name && x.status === "in_progress");
 						const statusKey = resolveStatus(rpc, cfg);
 
 						const icon = theme.fg(STATUS_COLOR[statusKey], STATUS_ICON[statusKey]);
-						const displayName = `Comrade ${name}`;
-						const styledName = theme.bold(displayName);
+						const styledName = theme.bold(`Comrade ${name}`);
 						const statusLabel = theme.fg(STATUS_COLOR[statusKey], padRight(statusKey, 9));
-						const taskTag = active ? " " + theme.fg("muted", `task:#${String(active.id)}`) : "";
-						const toolLabel = activity.currentToolName
-							? "  " + theme.fg("warning", activity.currentToolName)
-							: "";
-						const toolCount =
-							activity.toolUseCount > 0 ? "  " + theme.fg("dim", `(${String(activity.toolUseCount)} tools)`) : "";
 
-						const row = ` ${icon} ${padRight(styledName, nameColWidth)} ${statusLabel}${taskTag}${toolLabel}${toolCount}`;
+						const counts = perOwner.get(name) ?? { pending: 0, completed: 0 };
+						const pNum = String(counts.pending).padStart(pW);
+						const cNum = String(counts.completed).padStart(cW);
+						const countsSuffix = theme.fg("dim", ` \u00b7 ${pNum} pending \u00b7 ${cNum} complete`);
+
+						const row = ` ${icon} ${padRight(styledName, nameColWidth)} ${statusLabel}${countsSuffix}`;
 						lines.push(truncateToWidth(row, width));
 					}
+
+					// ── Total row ──
+					// Left portion of comrade row: " icon name status" = 1+1+1+nameColWidth+1+9
+					const leftWidth = nameColWidth + 13;
+					const totalLabel = theme.bold("Total");
+					const tpNum = String(totalPending).padStart(pW);
+					const tcNum = String(totalCompleted).padStart(cW);
+					const totalCounts = theme.fg("dim", ` \u00b7 ${tpNum} pending \u00b7 ${tcNum} complete`);
+					const totalRow = ` ${padRight(totalLabel, leftWidth - 1)}${totalCounts}`;
+					lines.push(truncateToWidth(totalRow, width));
 				}
 
 				// ── Hints line ──
