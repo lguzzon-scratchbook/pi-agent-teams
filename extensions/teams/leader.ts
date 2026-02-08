@@ -19,6 +19,7 @@ import { ensureWorktreeCwd } from "./worktree.js";
 import { buildTeamsWidgetLines } from "./leader-widget.js";
 import { pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
 import { handleTeamTaskCommand } from "./leader-task-commands.js";
+import { handleTeamPlanCommand } from "./leader-plan-commands.js";
 
 
 type ContextMode = "fresh" | "branch";
@@ -86,7 +87,10 @@ function shellQuote(v: string): string {
 function parseAssigneePrefix(text: string): { assignee?: string; text: string } {
 	const m = text.match(/^([a-zA-Z0-9_-]+):\s*(.+)$/);
 	if (!m) return { text };
-	return { assignee: m[1], text: m[2] };
+	const assignee = m[1];
+	const rest = m[2];
+	if (!assignee || !rest) return { text };
+	return { assignee, text: rest };
 }
 
 function getTeamSessionsDir(teamDir: string): string {
@@ -371,7 +375,7 @@ export function runLeader(pi: ExtensionAPI): void {
 	pi.on("tool_call", (event, _ctx) => {
 		if (!delegateMode) return;
 		const blockedTools = new Set(["bash", "edit", "write"]);
-		if (blockedTools.has(event.name)) {
+		if (blockedTools.has(event.toolName)) {
 			return { block: true, reason: "Delegate mode is active - use teammates for implementation." };
 		}
 	});
@@ -550,7 +554,8 @@ export function runLeader(pi: ExtensionAPI): void {
 				}
 
 				const description = text;
-				const subject = description.split("\n")[0].slice(0, 120);
+				const firstLine = description.split("\n").at(0) ?? "";
+				const subject = firstLine.slice(0, 120);
 				const effectiveTlId = taskListId ?? teamId;
 				const task = await createTask(teamDir, effectiveTlId, { subject, description, owner: assignee });
 
@@ -1129,84 +1134,11 @@ export function runLeader(pi: ExtensionAPI): void {
 				}
 
 				case "plan": {
-					const [planSub, ...planRest] = rest;
-					if (!planSub || planSub === "help") {
-						ctx.ui.notify(
-							[
-								"Usage:",
-								"  /team plan approve <name>",
-								"  /team plan reject <name> [feedback...]",
-							].join("\n"),
-							"info",
-						);
-						return;
-					}
-
-					if (planSub === "approve") {
-						const nameRaw = planRest[0];
-						if (!nameRaw) {
-							ctx.ui.notify("Usage: /team plan approve <name>", "error");
-							return;
-						}
-						const name = sanitizeName(nameRaw);
-						const pending = pendingPlanApprovals.get(name);
-						if (!pending) {
-							ctx.ui.notify(`No pending plan approval for ${name}`, "error");
-							return;
-						}
-
-						const teamId = ctx.sessionManager.getSessionId();
-						const teamDir = getTeamDir(teamId);
-						const ts = new Date().toISOString();
-						await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-							from: "team-lead",
-							text: JSON.stringify({
-								type: "plan_approved",
-								requestId: pending.requestId,
-								from: "team-lead",
-								timestamp: ts,
-							}),
-							timestamp: ts,
-						});
-						pendingPlanApprovals.delete(name);
-						ctx.ui.notify(`Approved plan for ${name}`, "info");
-						return;
-					}
-
-					if (planSub === "reject") {
-						const nameRaw = planRest[0];
-						if (!nameRaw) {
-							ctx.ui.notify("Usage: /team plan reject <name> [feedback...]", "error");
-							return;
-						}
-						const name = sanitizeName(nameRaw);
-						const pending = pendingPlanApprovals.get(name);
-						if (!pending) {
-							ctx.ui.notify(`No pending plan approval for ${name}`, "error");
-							return;
-						}
-
-						const feedback = planRest.slice(1).join(" ").trim() || "Plan rejected";
-						const teamId = ctx.sessionManager.getSessionId();
-						const teamDir = getTeamDir(teamId);
-						const ts = new Date().toISOString();
-						await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
-							from: "team-lead",
-							text: JSON.stringify({
-								type: "plan_rejected",
-								requestId: pending.requestId,
-								from: "team-lead",
-								feedback,
-								timestamp: ts,
-							}),
-							timestamp: ts,
-						});
-						pendingPlanApprovals.delete(name);
-						ctx.ui.notify(`Rejected plan for ${name}: ${feedback}`, "info");
-						return;
-					}
-
-					ctx.ui.notify(`Unknown plan subcommand: ${planSub}`, "error");
+					await handleTeamPlanCommand({
+						ctx,
+						rest,
+						pendingPlanApprovals,
+					});
 					return;
 				}
 
