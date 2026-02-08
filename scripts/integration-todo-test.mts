@@ -397,6 +397,28 @@ function printTaskSummary(tasks: TeamTask[]): void {
 	for (const t of sorted) {
 		console.log(`- #${t.id} ${(t.owner ?? "-").padEnd(7)} ${t.subject}`);
 	}
+
+	const agents = ["agent1", "agent2", "agent3"];
+	const knownAgents = new Set<string>(agents);
+
+	const dist = new Map<string, number>();
+	for (const a of agents) dist.set(a, 0);
+	for (const t of tasks) {
+		const owner = t.owner;
+		if (!owner) continue;
+		dist.set(owner, (dist.get(owner) ?? 0) + 1);
+	}
+
+	const parts = agents.map((a) => `${a}=${dist.get(a) ?? 0}`);
+	const otherOwners: string[] = [];
+	for (const k of dist.keys()) {
+		if (!knownAgents.has(k)) otherOwners.push(k);
+	}
+	for (const o of otherOwners) {
+		parts.push(`${o}=${dist.get(o) ?? 0}`);
+	}
+
+	console.log(`\nOwner distribution: ${parts.join(" ")}`);
 }
 
 function runWorkspaceVerify(workspaceDir: string): { ok: boolean; output: string } {
@@ -424,6 +446,10 @@ const entryPath = path.join(repoRoot, "extensions", "teams", "index.ts");
 console.log(`TeamId: ${teamId}`);
 console.log(`TeamDir: ${teamDir}`);
 console.log(`Workspace: ${workspaceDir}`);
+console.log(`SessionsDir: ${sessionsDir}`);
+for (let i = 1; i <= 3; i += 1) {
+	console.log(`SessionFile agent${i}: ${path.join(sessionsDir, `agent${i}.jsonl`)}`);
+}
 console.log("Spawning 3 workers, creating 15 tasks (todo app)");
 
 fs.mkdirSync(workspaceDir, { recursive: true });
@@ -438,8 +464,22 @@ if (plan.length !== 15) {
 
 const created = new Map<TaskKey, TeamTask>();
 for (const p of plan) {
+	// IMPORTANT: create tasks with owner unset so workers must auto-claim.
 	const t = await createTask(teamDir, teamId, { subject: p.subject, description: p.description });
 	created.set(p.key, t);
+}
+
+// Ensure tasks are truly unassigned (owner unset)
+{
+	const ts = await listTasks(teamDir, teamId);
+	if (ts.length !== 15) {
+		throw new Error(`Expected 15 tasks after creation, got ${ts.length}`);
+	}
+	const owned = ts.filter((t) => t.owner !== undefined);
+	if (owned.length) {
+		throw new Error(`Expected all tasks to be unowned; found owned task ids: ${owned.map((t) => t.id).join(", ")}`);
+	}
+	console.log("Created 15 tasks with owner unset (unassigned). Workers will auto-claim.");
 }
 
 for (const p of plan) {
