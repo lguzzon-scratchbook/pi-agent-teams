@@ -4,6 +4,8 @@ Date: 2026-02-07
 
 Goal: dogfood the Teams extension to implement its own roadmap (Claude parity), and capture anything that surprised/confused us while setting it up.
 
+> Terminology note: the extension supports `PI_TEAMS_STYLE=normal|soviet`. In normal style the UI says "teammate" and "team leader"; in soviet style it says "comrade" and "chairman".
+
 ## Test run: test1
 
 Decisions: tmux session `pi-teams-test1`; `PI_TEAMS_ROOT_DIR=~/projects/pi-agent-teams/test1`; `teamId=0baaa0e6-8020-4d9a-bf33-c1a65f99a2f7`; workers started manually in tmux (not `/team spawn`).

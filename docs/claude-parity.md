@@ -12,6 +12,8 @@ This document tracks **feature parity gaps** between:
 
 - `pi-agent-teams` (Pi extension)
 
+> Terminology note: the extension supports `PI_TEAMS_STYLE=normal|soviet`. These docs often say "comrade" for parity with Claude Teams, but in **normal** style you’ll see "teammate" and "team leader" in the UI.
+
 ## Scope / philosophy
 
 - Target the **same coordination primitives** as Claude Teams:

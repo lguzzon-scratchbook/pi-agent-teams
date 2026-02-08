@@ -62,13 +62,13 @@ pi   # auto-loads from extensions dir
 
 **Expected:** shows usage lines for `/team spawn`, `/team task`, etc.
 
-### 3c. Spawn a comrade
+### 3c. Spawn a teammate ("comrade" in soviet style)
 
 ```
 /team spawn agent1 fresh shared
 ```
 
-**Expected:** notification "Spawned agent1" or similar, widget shows `agent1: idle`.
+**Expected:** notification "Spawned agent1" or similar, widget shows `Teammate agent1: idle` (or `Comrade agent1: idle` in soviet style).
 
 ### 3d. Create and assign a task
 
