@@ -29,12 +29,7 @@ import {
 	removeTaskDependency,
 	isTaskBlocked,
 } from "../extensions/teams/task-store.js";
-import {
-	ensureTeamConfig,
-	loadTeamConfig,
-	upsertMember,
-	setMemberStatus,
-} from "../extensions/teams/team-config.js";
+import { ensureTeamConfig, loadTeamConfig, upsertMember, setMemberStatus } from "../extensions/teams/team-config.js";
 import { sanitizeName } from "../extensions/teams/names.js";
 import {
 	TEAM_MAILBOX_NS,

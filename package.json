@@ -21,10 +21,12 @@
     "skills": ["./skills"]
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.strict.json"
+    "typecheck": "tsc -p tsconfig.strict.json",
+    "smoke-test": "tsx scripts/smoke-test.mts"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "tsx": "^4.20.5"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",

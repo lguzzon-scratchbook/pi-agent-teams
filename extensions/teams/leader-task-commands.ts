@@ -178,7 +178,7 @@ export async function handleTeamTaskCommand(opts: {
 			lines.push("");
 			lines.push(task.description);
 
-			const result = typeof task.metadata?.result === "string" ? (task.metadata.result as string) : undefined;
+			const result = typeof task.metadata?.result === "string" ? task.metadata.result : undefined;
 			if (result) {
 				lines.push("");
 				lines.push("result:");
