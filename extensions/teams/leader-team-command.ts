@@ -47,6 +47,7 @@ const TEAM_HELP_TEXT = [
 	"  /team style",
 	"  /team style list",
 	"  /team style <name>",
+	"  /team style init <name> [extends <base>]",
 	"  /team plan approve <name>",
 	"  /team plan reject <name> [feedback...]",
 	"  /team cleanup [--force]",
@@ -116,7 +117,8 @@ export async function handleTeamCommand(opts: {
 	const leadName = getTeamConfig()?.leadName ?? "team-lead";
 	const taskListId = getTaskListId();
 
-	const [sub, ...rest] = args.trim().split(" ");
+	const parts = args.trim().split(/\s+/).filter((p) => p.length > 0);
+	const [sub, ...rest] = parts;
 	if (!sub || sub === "help") {
 		ctx.ui.notify(getTeamHelpText(), "info");
 		return;

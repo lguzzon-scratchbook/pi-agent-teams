@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { cleanupTeamDir } from "./cleanup.js";
 import { writeToMailbox } from "./mailbox.js";
 import { sanitizeName } from "./names.js";
-import { getTeamDir, getTeamsRootDir } from "./paths.js";
+import { getTeamDir, getTeamsRootDir, getTeamsStylesDir } from "./paths.js";
 import { TEAM_MAILBOX_NS } from "./protocol.js";
 import { unassignTasksForAgent, type TeamTask } from "./task-store.js";
 import { setMemberStatus, setTeamStyle, type TeamConfig } from "./team-config.js";
@@ -45,7 +47,14 @@ export async function handleTeamStyleCommand(opts: {
 	const { ctx, rest, teamDir, getStyle, setStyle, refreshTasks, renderWidget } = opts;
 	const argRaw = rest[0];
 	if (!argRaw) {
-		ctx.ui.notify("Teams style:\n" + `  current: ${getStyle()}\n` + "  list: /team style list\n" + "  set:  /team style <name>", "info");
+		ctx.ui.notify(
+			"Teams style:\n" +
+				`  current: ${getStyle()}\n` +
+				"  list:   /team style list\n" +
+				"  set:    /team style <name>\n" +
+				"  init:   /team style init <name> [extends <base>]",
+			"info",
+		);
 		return;
 	}
 
@@ -68,9 +77,68 @@ export async function handleTeamStyleCommand(opts: {
 		return;
 	}
 
+	if (argRaw === "init") {
+		const nameRaw = rest[1];
+		const styleId = normalizeTeamsStyleId(nameRaw);
+		if (!styleId) {
+			ctx.ui.notify("Usage: /team style init <name> [extends <base>]", "error");
+			return;
+		}
+
+		let extendsRaw: string | undefined;
+		if (rest[2] === "extends") extendsRaw = rest[3];
+		else extendsRaw = rest[2];
+		const extendsId = normalizeTeamsStyleId(extendsRaw) ?? "normal";
+
+		try {
+			resolveTeamsStyleDefinition(extendsId, { strict: true });
+		} catch (err) {
+			ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
+			return;
+		}
+
+		const dir = getTeamsStylesDir();
+		const file = path.join(dir, `${styleId}.json`);
+		try {
+			await fs.promises.mkdir(dir, { recursive: true });
+			const template = {
+				extends: extendsId,
+				strings: {
+					memberTitle: "Member",
+					memberPrefix: "Member ",
+				},
+				naming: {
+					requireExplicitSpawnName: false,
+					autoNameStrategy: {
+						kind: "pool",
+						pool: ["member1", "member2"],
+						fallbackBase: "member",
+					},
+				},
+			};
+			await fs.promises.writeFile(file, JSON.stringify(template, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			ctx.ui.notify(`Failed to create style file: ${file}\n${msg}`, "error");
+			return;
+		}
+
+		ctx.ui.notify(
+			[
+				"Created style template:",
+				`  ${file}`,
+				"",
+				"Edit it, then activate with:",
+				`  /team style ${styleId}`,
+			].join("\n"),
+			"info",
+		);
+		return;
+	}
+
 	const next = normalizeTeamsStyleId(argRaw);
 	if (!next) {
-		ctx.ui.notify("Usage: /team style <name> | /team style list", "error");
+		ctx.ui.notify("Usage: /team style <name> | /team style list | /team style init <name>", "error");
 		return;
 	}
 
