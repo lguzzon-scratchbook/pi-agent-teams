@@ -1,7 +1,7 @@
 import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { Theme, ThemeColor, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import type { TeammateRpc, TeammateStatus } from "./teammate-rpc.js";
-import type { ActivityTracker } from "./activity-tracker.js";
+import type { ActivityTracker, TranscriptLog, TranscriptEntry } from "./activity-tracker.js";
 import type { TeamTask } from "./task-store.js";
 import type { TeamConfig, TeamMember } from "./team-config.js";
 import type { TeamsStyle } from "./teams-style.js";
@@ -10,6 +10,7 @@ import { formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 export interface InteractiveWidgetDeps {
 	getTeammates(): Map<string, TeammateRpc>;
 	getTracker(): ActivityTracker;
+	getTranscript(name: string): TranscriptLog;
 	getTasks(): TeamTask[];
 	getTeamConfig(): TeamConfig | null;
 	getStyle(): TeamsStyle;
@@ -115,6 +116,58 @@ interface Row {
 
 type WidgetMode = "overview" | "session" | "dm";
 
+// ── Transcript formatting ──
+
+function formatTranscriptEntry(entry: TranscriptEntry, theme: Theme, width: number): string[] {
+	const ts = formatTimestamp(entry.timestamp);
+	const tsStr = theme.fg("dim", ts);
+	const maxTextWidth = width - 12; // " HH:MM:SS  " prefix
+
+	if (entry.kind === "text") {
+		// Wrap long text lines
+		const lines: string[] = [];
+		const text = entry.text;
+		if (visibleWidth(text) <= maxTextWidth) {
+			lines.push(` ${tsStr}  ${theme.fg("dim", theme.italic(text))}`);
+		} else {
+			// Simple word wrap
+			let remaining = text;
+			let first = true;
+			while (remaining.length > 0) {
+				const chunk = remaining.slice(0, maxTextWidth);
+				remaining = remaining.slice(maxTextWidth);
+				if (first) {
+					lines.push(` ${tsStr}  ${theme.fg("dim", theme.italic(chunk))}`);
+					first = false;
+				} else {
+					lines.push(` ${" ".repeat(10)}${theme.fg("dim", theme.italic(chunk))}`);
+				}
+			}
+		}
+		return lines;
+	}
+
+	if (entry.kind === "tool_start") {
+		const verb = TOOL_VERB[entry.toolName.toLowerCase()] ?? `${entry.toolName}\u2026`;
+		return [` ${tsStr}  ${theme.fg("warning", verb)}`];
+	}
+
+	if (entry.kind === "tool_end") {
+		const dur = entry.durationMs < 1000
+			? `${(entry.durationMs / 1000).toFixed(1)}s`
+			: `${(entry.durationMs / 1000).toFixed(1)}s`;
+		return [` ${tsStr}  ${theme.fg("muted", entry.toolName)} ${theme.fg("dim", "\u2500")} ${theme.fg("dim", dur)}`];
+	}
+
+	if (entry.kind === "turn_end") {
+		const tokStr = formatTokens(entry.tokens);
+		const label = `\u2500\u2500 turn ${String(entry.turnNumber)} complete \u2500\u2500 ${tokStr} tokens \u2500\u2500`;
+		return [` ${theme.fg("dim", label)}`];
+	}
+
+	return [];
+}
+
 // ── Main export ──
 
 export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: InteractiveWidgetDeps): Promise<void> {
@@ -139,6 +192,8 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 				let dmBuffer = "";
 				let notification: { text: string; color: ThemeColor } | null = null;
 				let notificationTimer: ReturnType<typeof setTimeout> | null = null;
+				let sessionScrollOffset = 0;
+				let sessionAutoFollow = true;
 
 				const refreshInterval = setInterval(() => tui.requestRender(), 1000);
 
@@ -328,66 +383,84 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					const activeTask = tasks.find(
 						(t) => t.owner === sessionName && t.status === "in_progress",
 					);
+					const transcript = deps.getTranscript(sessionName);
 
 					const lines: string[] = [];
 					const sep = theme.fg("dim", "\u2500".repeat(Math.max(0, width - 2)));
 
 					// Header
 					const icon = theme.fg(STATUS_COLOR[statusKey], STATUS_ICON[statusKey]);
-					const name = theme.bold(theme.fg("accent", formatMemberDisplayName(style, sessionName)));
+					const nameStr = theme.bold(theme.fg("accent", formatMemberDisplayName(style, sessionName)));
 					const status = theme.fg(STATUS_COLOR[statusKey], statusKey);
 					const tokens = theme.fg("dim", `${formatTokens(activity.totalTokens)} tokens`);
-					lines.push(truncateToWidth(` ${icon} ${name} \u2014 ${status} \u00b7 ${tokens}`, width));
+					const taskLabel = activeTask
+						? ` ${theme.fg("muted", "\u00b7")} ${theme.fg("dim", `#${String(activeTask.id)} ${activeTask.subject}`)}`
+						: "";
+					lines.push(truncateToWidth(` ${icon} ${nameStr} \u2014 ${status} \u00b7 ${tokens}${taskLabel}`, width));
 					lines.push(truncateToWidth(` ${sep}`, width));
 
-					// Task
-					if (activeTask) {
-						lines.push(
-							truncateToWidth(
-								` ${theme.fg("muted", "task:")} #${String(activeTask.id)} ${activeTask.subject}`,
-								width,
-							),
-						);
+					// Format all transcript entries into rendered lines
+					const allTranscriptLines: string[] = [];
+					for (const entry of transcript.getEntries()) {
+						const formatted = formatTranscriptEntry(entry, theme, width);
+						for (const fl of formatted) {
+							allTranscriptLines.push(truncateToWidth(fl, width));
+						}
 					}
 
-					// Current tool + stats
-					if (activity.currentToolName) {
-						lines.push(
-							truncateToWidth(
-								` ${theme.fg("muted", "tool:")} ${theme.fg("warning", activity.currentToolName)}`,
+					const totalLines = allTranscriptLines.length;
+
+					if (totalLines === 0) {
+						// Show current activity or waiting message when transcript is empty
+						if (activity.currentToolName) {
+							lines.push(truncateToWidth(
+								` ${theme.fg("warning", toolActivity(activity.currentToolName))}`,
 								width,
-							),
-						);
+							));
+						} else if (statusKey === "streaming") {
+							lines.push(truncateToWidth(` ${theme.fg("dim", theme.italic("thinking\u2026"))}`, width));
+						} else {
+							lines.push(truncateToWidth(` ${theme.fg("dim", theme.italic("waiting for activity\u2026"))}`, width));
+						}
+					} else {
+						// Determine visible window size based on terminal height
+						const termHeight = process.stdout.rows || 24;
+						// Reserve: header(2) + scrollBar(1) + notification(0-1) + hintsSep(1) + hints(1)
+						const notifLines = notification ? 1 : 0;
+						const chromeLines = 2 + 1 + notifLines + 1 + 1;
+						const viewportHeight = Math.max(3, termHeight - chromeLines);
+
+						// Apply scroll windowing only if content exceeds viewport
+						if (totalLines <= viewportHeight) {
+							// Everything fits — just show all lines
+							for (const tl of allTranscriptLines) lines.push(tl);
+							sessionScrollOffset = 0;
+						} else {
+							const maxScroll = totalLines - viewportHeight;
+
+							// Clamp
+							if (sessionScrollOffset > maxScroll) sessionScrollOffset = maxScroll;
+							if (sessionScrollOffset < 0) sessionScrollOffset = 0;
+							if (sessionAutoFollow) sessionScrollOffset = 0;
+
+							const endIndex = totalLines - sessionScrollOffset;
+							const startIndex = Math.max(0, endIndex - viewportHeight);
+							const visible = allTranscriptLines.slice(startIndex, endIndex);
+							for (const vl of visible) lines.push(vl);
+						}
 					}
-					lines.push(
-						truncateToWidth(
-							` ${theme.fg("muted", "stats:")} ${theme.fg("dim", `${String(activity.toolUseCount)} tools \u00b7 ${String(activity.turnCount)} turns`)}`,
+
+					// Scroll indicator bar
+					if (sessionScrollOffset > 0) {
+						lines.push(truncateToWidth(
+							` ${theme.fg("accent", `\u2193 ${String(sessionScrollOffset)} more line${sessionScrollOffset === 1 ? "" : "s"} (g to follow)`)}`,
 							width,
-						),
-					);
-
-					// Recent events (last 5)
-					const recent = activity.recentEvents.slice(-5);
-					if (recent.length > 0) {
-						lines.push(truncateToWidth(` ${theme.fg("muted", "recent:")}`, width));
-						for (const ev of recent) {
-							const ts = formatTimestamp(ev.timestamp);
-							const tool = ev.toolName ? ` ${ev.toolName}` : "";
-							lines.push(
-								truncateToWidth(`   ${theme.fg("dim", `${ts} ${ev.type}${tool}`)}`, width),
-							);
-						}
-					}
-
-					// Last assistant text (last ~10 lines)
-					if (rpc && rpc.lastAssistantText.trim()) {
-						lines.push(truncateToWidth(` ${sep}`, width));
-						const textLines = rpc.lastAssistantText.trim().split("\n").slice(-10);
-						for (const tl of textLines) {
-							lines.push(
-								truncateToWidth(` ${theme.fg("dim", theme.italic(tl))}`, width),
-							);
-						}
+						));
+					} else if (totalLines > 0) {
+						lines.push(truncateToWidth(
+							` ${theme.fg("success", "\u25cf following")}`,
+							width,
+						));
 					}
 
 					// Notification
@@ -399,11 +472,10 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 
 					// Hints
 					lines.push(truncateToWidth(` ${sep}`, width));
-					const hints = theme.fg(
-						"dim",
-						" m message \u00b7 a abort \u00b7 k kill \u00b7 esc back",
-					);
-					lines.push(truncateToWidth(hints, width));
+					lines.push(truncateToWidth(
+						theme.fg("dim", " \u2191\u2193 scroll \u00b7 g follow \u00b7 m message \u00b7 a abort \u00b7 k kill \u00b7 esc back"),
+						width,
+					));
 
 					return lines;
 				}
@@ -491,6 +563,40 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 								tui.requestRender();
 								return;
 							}
+							if (matchesKey(data, "up")) {
+								sessionScrollOffset += 1;
+								sessionAutoFollow = false;
+								tui.requestRender();
+								return;
+							}
+							if (matchesKey(data, "down")) {
+								sessionScrollOffset = Math.max(0, sessionScrollOffset - 1);
+								if (sessionScrollOffset === 0) sessionAutoFollow = true;
+								tui.requestRender();
+								return;
+							}
+							if (matchesKey(data, "pageUp")) {
+								const h = process.stdout.rows || 24;
+								const jump = Math.max(1, Math.floor(h / 2));
+								sessionScrollOffset += jump;
+								sessionAutoFollow = false;
+								tui.requestRender();
+								return;
+							}
+							if (matchesKey(data, "pageDown")) {
+								const h = process.stdout.rows || 24;
+								const jump = Math.max(1, Math.floor(h / 2));
+								sessionScrollOffset = Math.max(0, sessionScrollOffset - jump);
+								if (sessionScrollOffset === 0) sessionAutoFollow = true;
+								tui.requestRender();
+								return;
+							}
+							if (data === "g" || matchesKey(data, "end")) {
+								sessionScrollOffset = 0;
+								sessionAutoFollow = true;
+								tui.requestRender();
+								return;
+							}
 							if (data === "m") {
 								dmTarget = sessionName;
 								mode = "dm";
@@ -541,6 +647,8 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 							if (name) {
 								sessionName = name;
 								mode = "session";
+								sessionScrollOffset = 0;
+								sessionAutoFollow = true;
 								tui.requestRender();
 							}
 							return;

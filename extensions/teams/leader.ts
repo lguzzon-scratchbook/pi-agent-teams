@@ -11,7 +11,7 @@ import { TeammateRpc } from "./teammate-rpc.js";
 import { ensureTeamConfig, loadTeamConfig, setMemberStatus, upsertMember, type TeamConfig } from "./team-config.js";
 import { getTeamDir, getTeamsRootDir } from "./paths.js";
 import { ensureWorktreeCwd } from "./worktree.js";
-import { ActivityTracker } from "./activity-tracker.js";
+import { ActivityTracker, TranscriptTracker } from "./activity-tracker.js";
 import { openInteractiveWidget } from "./teams-panel.js";
 import { createTeamsWidget } from "./teams-widget.js";
 import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
@@ -136,6 +136,7 @@ function taskAssignmentPayload(task: TeamTask, assignedBy: string) {
 export function runLeader(pi: ExtensionAPI): void {
 	const teammates = new Map<string, TeammateRpc>();
 	const tracker = new ActivityTracker();
+	const transcriptTracker = new TranscriptTracker();
 	const teammateEventUnsubs = new Map<string, () => void>();
 	let currentCtx: ExtensionContext | null = null;
 	let currentTeamId: string | null = null;
@@ -174,6 +175,7 @@ export function runLeader(pi: ExtensionAPI): void {
 				}
 				teammateEventUnsubs.delete(name);
 				tracker.reset(name);
+				transcriptTracker.reset(name);
 
 				await t.stop();
 				// Claude-style: unassign non-completed tasks on exit.
@@ -261,7 +263,10 @@ export function runLeader(pi: ExtensionAPI): void {
 		const t = new TeammateRpc(name, sessionFile);
 		teammates.set(name, t);
 		// Track teammate activity for the widget/panel.
-		const unsub = t.onEvent((ev) => tracker.handleEvent(name, ev));
+		const unsub = t.onEvent((ev) => {
+			tracker.handleEvent(name, ev);
+			transcriptTracker.handleEvent(name, ev);
+		});
 		teammateEventUnsubs.set(name, unsub);
 		renderWidget();
 
@@ -275,6 +280,7 @@ export function runLeader(pi: ExtensionAPI): void {
 			}
 			teammateEventUnsubs.delete(name);
 			tracker.reset(name);
+			transcriptTracker.reset(name);
 
 			if (currentCtx?.sessionManager.getSessionId() !== leaderSessionId) return;
 			const effectiveTlId = taskListId ?? leaderSessionId;
@@ -525,6 +531,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		await openInteractiveWidget(ctx, {
 			getTeammates: () => teammates,
 			getTracker: () => tracker,
+			getTranscript: (n: string) => transcriptTracker.get(n),
 			getTasks: () => tasks,
 			getTeamConfig: () => teamConfig,
 			getStyle: () => style,
