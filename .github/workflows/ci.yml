@@ -22,8 +22,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Typecheck (strict)
-        run: npm run typecheck
+      - name: Check (typecheck + lint)
+        run: npm run check
 
       - name: Smoke test
         run: npm run smoke-test
