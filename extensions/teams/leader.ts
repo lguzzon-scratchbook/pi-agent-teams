@@ -16,25 +16,8 @@ import { openInteractiveWidget } from "./teams-panel.js";
 import { createTeamsWidget } from "./teams-widget.js";
 import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 import { pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
-import { handleTeamTaskCommand } from "./leader-task-commands.js";
-import { handleTeamPlanCommand } from "./leader-plan-commands.js";
-import { handleTeamSpawnCommand } from "./leader-spawn-command.js";
+import { handleTeamCommand } from "./leader-team-command.js";
 import { registerTeamsTool } from "./leader-teams-tool.js";
-import {
-	handleTeamBroadcastCommand,
-	handleTeamDmCommand,
-	handleTeamSendCommand,
-	handleTeamSteerCommand,
-} from "./leader-messaging-commands.js";
-import { handleTeamEnvCommand, handleTeamIdCommand, handleTeamListCommand } from "./leader-info-commands.js";
-import {
-	handleTeamCleanupCommand,
-	handleTeamDelegateCommand,
-	handleTeamKillCommand,
-	handleTeamShutdownCommand,
-	handleTeamStopCommand,
-	handleTeamStyleCommand,
-} from "./leader-lifecycle-commands.js";
 import type { ContextMode, SpawnTeammateFn, SpawnTeammateResult, WorkspaceMode } from "./spawn-types.js";
 
 function getTeamsExtensionEntryPath(): string | null {
@@ -574,243 +557,34 @@ export function runLeader(pi: ExtensionAPI): void {
 			currentCtx = ctx;
 			currentTeamId = ctx.sessionManager.getSessionId();
 
-			const [sub, ...rest] = args.trim().split(" ");
-			if (!sub || sub === "help") {
-				ctx.ui.notify(
-					[
-						"Usage:",
-						"  /team id",
-						"  /team env <name>",
-						"  /team spawn <name> [fresh|branch] [shared|worktree] [plan]",
-						"  /team panel",
-						"  /team send <name> <msg...>",
-						"  /team dm <name> <msg...>",
-						"  /team broadcast <msg...>",
-						"  /team steer <name> <msg...>",
-						"  /team stop <name> [reason...]",
-						"  /team kill <name>",
-						"  /team shutdown",
-						"  /team shutdown <name> [reason...]",
-						"  /team delegate [on|off]",
-						"  /team plan approve <name>",
-						"  /team plan reject <name> [feedback...]",
-						"  /team cleanup [--force]",
-						"  /team task add <text...>",
-						"  /team task assign <id> <agent>",
-						"  /team task unassign <id>",
-						"  /team task list",
-						"  /team task clear [completed|all] [--force]",
-						"  /team task show <id>",
-						"  /team task dep add <id> <depId>",
-						"  /team task dep rm <id> <depId>",
-						"  /team task dep ls <id>",
-						"  /team task use <taskListId>",
-					].join("\n"),
-					"info",
-				);
-				return;
-			}
-
-			const leadName = teamConfig?.leadName ?? "team-lead";
-
-			type TeamSubcommandHandler = () => Promise<void>;
-			const handlers: Record<string, TeamSubcommandHandler> = {
-				list: async () => {
-					await handleTeamListCommand({
-						ctx,
-						teammates,
-						getTeamConfig: () => teamConfig,
-						style,
-						refreshTasks,
-						renderWidget,
-					});
+			await handleTeamCommand({
+				args,
+				ctx,
+				teammates,
+				getTeamConfig: () => teamConfig,
+				getTasks: () => tasks,
+				refreshTasks,
+				renderWidget,
+				getTaskListId: () => taskListId,
+				setTaskListId: (id) => {
+					taskListId = id;
 				},
-
-				id: async () => {
-					await handleTeamIdCommand({
-						ctx,
-						taskListId,
-						leadName,
-						style,
-					});
+				pendingPlanApprovals,
+				getDelegateMode: () => delegateMode,
+				setDelegateMode: (next) => {
+					delegateMode = next;
 				},
-
-				env: async () => {
-					await handleTeamEnvCommand({
-						ctx,
-						rest,
-						taskListId,
-						leadName,
-						style,
-						getTeamsExtensionEntryPath,
-						shellQuote,
-					});
+				getStyle: () => style,
+				setStyle: (next) => {
+					style = next;
 				},
-
-				cleanup: async () => {
-					await handleTeamCleanupCommand({
-						ctx,
-						rest,
-						teammates,
-						refreshTasks,
-						getTasks: () => tasks,
-						renderWidget,
-						style,
-					});
-				},
-
-				delegate: async () => {
-					await handleTeamDelegateCommand({
-						ctx,
-						rest,
-						getDelegateMode: () => delegateMode,
-						setDelegateMode: (next) => {
-							delegateMode = next;
-						},
-						renderWidget,
-					});
-				},
-
-				shutdown: async () => {
-					await handleTeamShutdownCommand({
-						ctx,
-						rest,
-						teammates,
-						leadName,
-						style,
-						getCurrentCtx: () => currentCtx,
-						stopAllTeammates,
-						refreshTasks,
-						renderWidget,
-					});
-				},
-
-				spawn: async () => {
-					await handleTeamSpawnCommand({ ctx, rest, teammates, style, spawnTeammate });
-				},
-
-				style: async () => {
-					const teamId = ctx.sessionManager.getSessionId();
-					const teamDir = getTeamDir(teamId);
-					await handleTeamStyleCommand({
-						ctx,
-						rest,
-						teamDir,
-						getStyle: () => style,
-						setStyle: (next) => {
-							style = next;
-						},
-						refreshTasks,
-						renderWidget,
-					});
-				},
-
-				panel: async () => {
-					await openWidget(ctx);
-				},
-
-				send: async () => {
-					await handleTeamSendCommand({
-						ctx,
-						rest,
-						teammates,
-						style,
-						renderWidget,
-					});
-				},
-
-				steer: async () => {
-					await handleTeamSteerCommand({
-						ctx,
-						rest,
-						teammates,
-						style,
-						renderWidget,
-					});
-				},
-
-				stop: async () => {
-					await handleTeamStopCommand({
-						ctx,
-						rest,
-						teammates,
-						leadName,
-						style,
-						refreshTasks,
-						getTasks: () => tasks,
-						renderWidget,
-					});
-				},
-
-				kill: async () => {
-					await handleTeamKillCommand({
-						ctx,
-						rest,
-						teammates,
-						leadName,
-						style,
-						taskListId,
-						refreshTasks,
-						renderWidget,
-					});
-				},
-
-				dm: async () => {
-					await handleTeamDmCommand({
-						ctx,
-						rest,
-						leadName,
-						style,
-					});
-				},
-
-				broadcast: async () => {
-					await handleTeamBroadcastCommand({
-						ctx,
-						rest,
-						teammates,
-						leadName,
-						style,
-						refreshTasks,
-						getTasks: () => tasks,
-						getTaskListId: () => taskListId,
-					});
-				},
-
-				task: async () => {
-					await handleTeamTaskCommand({
-						ctx,
-						rest,
-						leadName,
-						style,
-						getTaskListId: () => taskListId,
-						setTaskListId: (id) => {
-							taskListId = id;
-						},
-						getTasks: () => tasks,
-						refreshTasks,
-						renderWidget,
-					});
-				},
-
-				plan: async () => {
-					await handleTeamPlanCommand({
-						ctx,
-						rest,
-						leadName,
-						style,
-						pendingPlanApprovals,
-					});
-				},
-			};
-
-			const normalizedSub = sub === "widget" ? "panel" : sub;
-			const handler = handlers[normalizedSub];
-			if (!handler) {
-				ctx.ui.notify(`Unknown subcommand: ${sub}`, "error");
-				return;
-			}
-			await handler();
+				spawnTeammate,
+				openWidget,
+				getTeamsExtensionEntryPath,
+				shellQuote,
+				getCurrentCtx: () => currentCtx,
+				stopAllTeammates,
+			});
 		},
 	});
 }
