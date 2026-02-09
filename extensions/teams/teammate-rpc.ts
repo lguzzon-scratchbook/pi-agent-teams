@@ -4,7 +4,7 @@ import type { AgentEvent } from "@mariozechner/pi-agent-core";
 export type TeammateStatus = "starting" | "idle" | "streaming" | "stopped" | "error";
 
 type RpcCommand =
-	| { id: string; type: "prompt"; message: string; streamingBehavior?: "steer" | "followUp" }
+	| { id: string; type: "prompt"; message: string }
 	| { id: string; type: "steer"; message: string }
 	| { id: string; type: "follow_up"; message: string }
 	| { id: string; type: "abort" }
@@ -48,7 +48,31 @@ function isRpcResponse(v: unknown): v is RpcResponse {
 
 function isAgentEvent(v: unknown): v is AgentEvent {
 	if (!isRecord(v)) return false;
-	return typeof v.type === "string";
+	if (typeof v.type !== "string") return false;
+
+	// Validate the minimal shapes we actually dereference below.
+	if (v.type === "message_update") {
+		const ame = v.assistantMessageEvent;
+		if (!isRecord(ame)) return false;
+		if (typeof ame.type !== "string") return false;
+		if (ame.type === "text_delta" && typeof ame.delta !== "string") return false;
+		return true;
+	}
+
+	if (v.type === "tool_execution_start" || v.type === "tool_execution_update" || v.type === "tool_execution_end") {
+		if (typeof v.toolCallId !== "string") return false;
+		if (typeof v.toolName !== "string") return false;
+		return true;
+	}
+
+	return (
+		v.type === "agent_start" ||
+		v.type === "agent_end" ||
+		v.type === "turn_start" ||
+		v.type === "turn_end" ||
+		v.type === "message_start" ||
+		v.type === "message_end"
+	);
 }
 
 export class TeammateRpc {
