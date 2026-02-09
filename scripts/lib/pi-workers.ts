@@ -39,7 +39,7 @@ export function spawnTeamsWorkerRpc(opts: {
 	taskListId: string;
 	agentName: string;
 	leadName: string;
-	style: "normal" | "soviet";
+	style: string;
 	autoClaim: boolean;
 	planRequired: boolean;
 	systemAppend: string;
