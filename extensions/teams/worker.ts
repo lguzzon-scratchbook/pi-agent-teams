@@ -37,7 +37,7 @@ function teamDirFromEnv(): {
 	taskListId: string;
 	agentName: string;
 	leadName: string;
-	style: TeamsStyle;
+	styleId: TeamsStyle;
 	autoClaim: boolean;
 } | null {
 	const teamId = process.env.PI_TEAMS_TEAM_ID;
@@ -46,7 +46,7 @@ function teamDirFromEnv(): {
 
 	const agentName = sanitizeName(agentNameRaw);
 	const taskListId = process.env.PI_TEAMS_TASK_LIST_ID ?? teamId;
-	const style = getTeamsStyleFromEnv(process.env);
+	const styleId = getTeamsStyleFromEnv(process.env);
 	const leadName = sanitizeName(process.env.PI_TEAMS_LEAD_NAME ?? "team-lead");
 	const autoClaim = (process.env.PI_TEAMS_AUTO_CLAIM ?? "1") === "1";
 
@@ -56,7 +56,7 @@ function teamDirFromEnv(): {
 		taskListId,
 		agentName,
 		leadName,
-		style,
+		styleId,
 		autoClaim,
 	};
 }
@@ -121,7 +121,11 @@ export function runWorker(pi: ExtensionAPI): void {
 	const env = teamDirFromEnv();
 	if (!env) return;
 
-	const { teamId, teamDir, taskListId, agentName, leadName, style, autoClaim } = env;
+	const { teamId, teamDir, taskListId, agentName, leadName, styleId, autoClaim } = env;
+
+	// Prefer persisted team config style (leader-controlled) over env default.
+	// This keeps manual workers consistent with the current team terminology.
+	let style: TeamsStyle = styleId;
 
 	const TeamMessageToolParamsSchema = Type.Object({
 		recipient: Type.String({ description: "Name of the comrade to message" }),
@@ -456,7 +460,8 @@ export function runWorker(pi: ExtensionAPI): void {
 
 		// Register ourselves in the shared team config so manual tmux workers are discoverable.
 		try {
-			const cfg = await ensureTeamConfig(teamDir, { teamId, taskListId, leadName, style });
+			const cfg = await ensureTeamConfig(teamDir, { teamId, taskListId, leadName, style: styleId });
+			style = cfg.style ?? styleId;
 			const now = new Date().toISOString();
 			if (!cfg.members.some((m) => m.name === agentName)) {
 				await upsertMember(teamDir, {
