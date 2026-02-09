@@ -95,12 +95,13 @@ Spawning with `plan` restricts the teammate to read-only tools. After producing 
 ```
 /team panel                    # interactive overlay with teammate details
 /team list                     # show teammates and their state
+/team shutdown                 # stop all teammates (leader session remains active)
 /team shutdown <name>          # graceful shutdown (teammate can reject if busy)
-/team kill                     # force kill all RPC teammates
+/team kill <name>              # force-terminate one RPC teammate
 /team cleanup [--force]        # delete team directory after all teammates stopped
 ```
 
-Teammates reject shutdown requests when they have an active task. Use `/team kill` to force.
+Teammates reject shutdown requests when they have an active task. Use `/team kill <name>` to force.
 
 ## Other commands
 
@@ -111,13 +112,15 @@ Teammates reject shutdown requests when they have an active task. Use `/team kil
 
 ## Shared task list across sessions
 
-Set `PI_TEAMS_TASK_LIST_ID` env to reuse tasks across team sessions. Or switch mid-session:
+`PI_TEAMS_TASK_LIST_ID` is primarily **worker-side** (use it when you start a teammate manually).
+
+The leader switches task lists via:
 
 ```
 /team task use my-persistent-list
 ```
 
-Teammates spawned after the switch inherit the new task list ID.
+The chosen task list ID is persisted in `config.json`. Teammates spawned after the switch inherit the new task list ID; existing teammates need a restart to pick up changes.
 
 ## Message protocol
 

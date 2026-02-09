@@ -122,7 +122,7 @@ All management commands live under `/team`.
 | `/team broadcast <msg>` | Message all teammates |
 | `/team stop <name> [reason]` | Abort current work (resets task to pending) |
 | `/team shutdown <name> [reason]` | Graceful shutdown (handshake) |
-| `/team shutdown` | Shutdown leader + all teammates |
+| `/team shutdown` | Stop all teammates (leader session remains active) |
 | `/team kill <name>` | Force-terminate |
 | `/team cleanup [--force]` | Delete team artifacts |
 | `/team id` | Print team/task-list IDs and paths |
@@ -165,6 +165,14 @@ All management commands live under `/team`.
 ```
 
 ## Development
+
+### Quality gate
+
+```bash
+npm run check
+```
+
+Runs strict TypeScript typechecking (`npm run typecheck`) and ESLint (`npm run lint`).
 
 ### Smoke test (no API keys)
 

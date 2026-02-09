@@ -40,11 +40,11 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
 | Display modes | In-process selection (Shift+Up/Down); split panes (tmux/iTerm) | ❌ | Pi has a widget + commands, but no terminal-level comrade navigation/panes. | P2 |
 | Delegate mode | Lead restricted to coordination-only tools | ✅ | `/team delegate [on|off]` toggles; `pi.on("tool_call")` blocks `bash/edit/write`; `PI_TEAMS_DELEGATE_MODE=1` env. Widget shows `[delegate]`. | P1 |
 | Plan approval | Comrade can be "plan required" and needs lead approval to implement | ✅ | `/team spawn <name> plan` sets `PI_TEAMS_PLAN_REQUIRED=1`; worker restricted to read-only tools; submits plan via `plan_approval_request`; `/team plan approve|reject <name>`. | P1 |
-| Shutdown handshake | Lead requests shutdown; comrade can approve/reject | ✅ | Full protocol: `shutdown_request` → `shutdown_approved` or `shutdown_rejected` (when worker is busy). `/team shutdown <name>` (graceful) + `/team kill` (force). | P1 |
+| Shutdown handshake | Lead requests shutdown; comrade can approve/reject | ✅ | Full protocol: `shutdown_request` → `shutdown_approved` or `shutdown_rejected` (when worker is busy). `/team shutdown <name>` (graceful) + `/team kill <name>` (force). | P1 |
 | Cleanup team | “Clean up the team” removes shared resources after comrades stopped | ✅ | `/team cleanup [--force]` deletes only `<teamsRoot>/<teamId>` after safety checks. | P1 |
 | Hooks / quality gates | `ComradeIdle`, `TaskCompleted` hooks | ❌ | Add optional hook runner in leader on idle/task-complete events (script execution + exit-code gating). | P2 |
 | Task list UX | Ctrl+T toggle; show all/clear tasks by asking | 🟡 | Widget + `/team task list` show blocked/deps; `/team task show <id>`; `/team task clear [completed|all]`. No Ctrl+T toggle yet. | P0 |
-| Shared task list across sessions | `CLAUDE_CODE_TASK_LIST_ID=...` | ✅ | `PI_TEAMS_TASK_LIST_ID` env on leader + worker; `/team task use <taskListId>` switches the leader (and newly spawned workers). Existing workers need a restart to pick up changes. Persisted in config.json. | P1 |
+| Shared task list across sessions | `CLAUDE_CODE_TASK_LIST_ID=...` | ✅ | `PI_TEAMS_TASK_LIST_ID` env is **worker-side** (for manually started workers). The leader switches task lists via `/team task use <taskListId>` (persisted in `config.json`). Newly spawned workers inherit the new task list ID; existing workers need a restart to pick up changes. | P1 |
 
 ## Prioritized roadmap
 
@@ -66,7 +66,7 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
 4) **Shutdown handshake** ✅
    - Full protocol: `shutdown_request` → `shutdown_approved` / `shutdown_rejected`
    - Worker rejects when busy (streaming + active task), auto-approves when idle
-   - Leader command: `/team shutdown <name> [reason...]` (graceful), `/team kill` as force
+   - Leader command: `/team shutdown <name> [reason...]` (graceful), `/team kill <name>` as force
 
 5) **Plan approval** ✅
    - `/team spawn <name> [fresh|branch] [shared|worktree] plan` sets `PI_TEAMS_PLAN_REQUIRED=1`
@@ -109,7 +109,9 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
 
 ## Where changes would land (code map)
 
-- Leader orchestration + commands + tool: `extensions/teams/leader.ts`
+- Leader orchestration: `extensions/teams/leader.ts`
+- Leader `/team` command dispatch: `extensions/teams/leader-team-command.ts`
+- Leader LLM tool (`teams`): `extensions/teams/leader-teams-tool.ts`
 - Worker mailbox polling + self-claim + protocols: `extensions/teams/worker.ts`
 - Task store + locking: `extensions/teams/task-store.ts`, `extensions/teams/fs-lock.ts`
 - Mailbox store + locking: `extensions/teams/mailbox.ts`
