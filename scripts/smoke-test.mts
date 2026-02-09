@@ -31,6 +31,8 @@ import {
 } from "../extensions/teams/task-store.js";
 import { ensureTeamConfig, loadTeamConfig, upsertMember, setMemberStatus } from "../extensions/teams/team-config.js";
 import { sanitizeName } from "../extensions/teams/names.js";
+import { getTeamsNamingRules, getTeamsStrings } from "../extensions/teams/teams-style.js";
+import { getTeamHelpText } from "../extensions/teams/leader-team-command.js";
 import {
 	TEAM_MAILBOX_NS,
 	isIdleNotification,
@@ -410,6 +412,64 @@ console.log("\n7. Pi extension loading");
 		console.log("  (skipped) pi --version returned non-zero exit code");
 	} else {
 		assert((res.stdout ?? "").trim().length > 0, "pi --version works");
+	}
+}
+
+// ── 8. styles (custom + naming rules) ───────────────────────────────
+console.log("\n8. teams-style (custom styles)");
+{
+	const prev = process.env.PI_TEAMS_ROOT_DIR;
+	process.env.PI_TEAMS_ROOT_DIR = tmpRoot;
+
+	// Write a custom style under <teamsRoot>/_styles/
+	const stylesDir = path.join(tmpRoot, "_styles");
+	fs.mkdirSync(stylesDir, { recursive: true });
+	fs.writeFileSync(
+		path.join(stylesDir, "smoke-custom.json"),
+		JSON.stringify(
+			{
+				extends: "pirate",
+				strings: { memberTitle: "Deckhand", memberPrefix: "Deckhand " },
+				naming: {
+					requireExplicitSpawnName: false,
+					autoNameStrategy: { kind: "pool", pool: ["pegleg"], fallbackBase: "deckhand" },
+				},
+			},
+			null,
+			2,
+		) + "\n",
+		"utf8",
+	);
+
+	const s = getTeamsStrings("smoke-custom");
+	assertEq(s.memberTitle, "Deckhand", "custom style overrides strings");
+	const naming = getTeamsNamingRules("smoke-custom");
+	assert(naming.requireExplicitSpawnName === false, "custom style naming rules parsed");
+	assert(naming.autoNameStrategy.kind === "pool", "custom style can use pool naming");
+	if (naming.autoNameStrategy.kind === "pool") {
+		assertEq(naming.autoNameStrategy.fallbackBase, "deckhand", "custom style fallbackBase parsed");
+		assertEq(naming.autoNameStrategy.pool.at(0), "pegleg", "custom style pool parsed");
+	}
+
+	// restore env
+	if (prev === undefined) delete process.env.PI_TEAMS_ROOT_DIR;
+	else process.env.PI_TEAMS_ROOT_DIR = prev;
+}
+
+// ── 9. docs/help drift guard ────────────────────────────────────────
+console.log("\n9. docs/help drift guard");
+{
+	const help = getTeamHelpText();
+	assert(help.includes("/team style list"), "help mentions /team style list");
+	assert(help.includes("/team style init"), "help mentions /team style init");
+
+	const readmePath = path.join(process.cwd(), "README.md");
+	if (!fs.existsSync(readmePath)) {
+		console.log("  (skipped) README.md not found");
+	} else {
+		const readme = fs.readFileSync(readmePath, "utf8");
+		assert(readme.includes("/team style list"), "README mentions /team style list");
+		assert(readme.includes("_styles"), "README mentions _styles directory");
 	}
 }
 
