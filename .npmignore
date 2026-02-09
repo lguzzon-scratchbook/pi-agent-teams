@@ -11,6 +11,9 @@
 .vscode/
 .idea/
 
+# GitHub (not needed at runtime)
+.github/
+
 # Logs
 *.log
 npm-debug.log*

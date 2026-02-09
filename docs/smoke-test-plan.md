@@ -12,9 +12,10 @@ Exercises all core primitives directly via `tsx`:
 
 ```bash
 npx tsx scripts/smoke-test.mts
+# or: npm run smoke-test
 ```
 
-**What it tests** (60 assertions):
+**What it tests** (overview):
 
 | Module           | Coverage                                                        |
 |------------------|-----------------------------------------------------------------|
@@ -24,10 +25,10 @@ npx tsx scripts/smoke-test.mts
 | `task-store.ts`  | CRUD, `startAssignedTask`, `completeTask`, `claimNextAvailable`,|
 |                  | `unassignTasksForAgent`, dependencies, `clearTasks`             |
 | `team-config.ts` | `ensureTeamConfig` (idempotent), `upsertMember`, `setMemberStatus`, `loadTeamConfig` |
-| `protocol.ts`    | All 11 message parsers (valid + invalid JSON + wrong type)      |
-| Pi CLI           | `pi --version` executes                                        |
+| `protocol.ts`    | Structured message parsers (valid + invalid JSON + wrong type)  |
+| Pi CLI           | `pi --version` executes (skipped in CI if `pi` not on PATH)     |
 
-**Expected result:** `PASSED: 60  FAILED: 0`
+**Expected result:** `PASSED: <n>  FAILED: 0`
 
 ## 2. Extension Loading Test
 

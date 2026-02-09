@@ -169,10 +169,11 @@ All management commands live under `/team`.
 ### Smoke test (no API keys)
 
 ```bash
-node scripts/smoke-test.mjs
+npm run smoke-test
+# or: npx tsx scripts/smoke-test.mts
 ```
 
-Filesystem-level test of the task store, mailbox, and team config.
+Filesystem-level smoke test of the task store, mailbox, team config, and protocol parsers.
 
 ### E2E RPC test (spawns pi + one teammate)
 
