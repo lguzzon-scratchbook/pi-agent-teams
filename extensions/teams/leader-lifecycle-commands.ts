@@ -7,7 +7,14 @@ import { getTeamDir, getTeamsRootDir } from "./paths.js";
 import { TEAM_MAILBOX_NS } from "./protocol.js";
 import { unassignTasksForAgent, type TeamTask } from "./task-store.js";
 import { setMemberStatus, setTeamStyle, type TeamConfig } from "./team-config.js";
-import { TEAMS_STYLES, type TeamsStyle, getTeamsStrings, formatMemberDisplayName } from "./teams-style.js";
+import {
+	type TeamsStyle,
+	formatMemberDisplayName,
+	getTeamsStrings,
+	listAvailableTeamsStyles,
+	normalizeTeamsStyleId,
+	resolveTeamsStyleDefinition,
+} from "./teams-style.js";
 import type { TeammateRpc } from "./teammate-rpc.js";
 
 export async function handleTeamDelegateCommand(opts: {
@@ -36,15 +43,42 @@ export async function handleTeamStyleCommand(opts: {
 	renderWidget: () => void;
 }): Promise<void> {
 	const { ctx, rest, teamDir, getStyle, setStyle, refreshTasks, renderWidget } = opts;
-	const arg = rest[0];
-	if (!arg) {
-		ctx.ui.notify(`Teams style: ${getStyle()} (set with: /team style <${TEAMS_STYLES.join("|")}>)`, "info");
+	const argRaw = rest[0];
+	if (!argRaw) {
+		ctx.ui.notify("Teams style:\n" + `  current: ${getStyle()}\n` + "  list: /team style list\n" + "  set:  /team style <name>", "info");
 		return;
 	}
 
-	const next: TeamsStyle | null = arg === "normal" || arg === "soviet" ? arg : null;
+	if (argRaw === "list") {
+		const { dir, all, builtins, customs } = listAvailableTeamsStyles();
+		ctx.ui.notify(
+			[
+				"Available team styles:",
+				"",
+				`built-in: ${builtins.join(", ")}`,
+				customs.length ? `custom:   ${customs.join(", ")}` : "custom:   (none)",
+				"",
+				"To add a custom style, create a JSON file:",
+				`  ${dir}/<style>.json`,
+				"",
+				`All: ${all.join(", ")}`,
+			].join("\n"),
+			"info",
+		);
+		return;
+	}
+
+	const next = normalizeTeamsStyleId(argRaw);
 	if (!next) {
-		ctx.ui.notify(`Unknown style: ${arg}. Use one of: ${TEAMS_STYLES.join(", ")}`, "error");
+		ctx.ui.notify("Usage: /team style <name> | /team style list", "error");
+		return;
+	}
+
+	try {
+		// Validate that the style exists (built-in or custom file). Falls back to throwing with a useful message.
+		resolveTeamsStyleDefinition(next, { strict: true });
+	} catch (err) {
+		ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
 		return;
 	}
 
@@ -236,18 +270,13 @@ export async function handleTeamShutdownCommand(opts: {
 	}
 
 	if (process.stdout.isTTY && process.stdin.isTTY) {
-		const msg =
-			style === "soviet"
-				? `Dismiss all ${strings.memberTitle.toLowerCase()}s from the ${strings.teamNoun}?`
-				: `Stop all ${String(activeNames.size)} teammate${activeNames.size === 1 ? "" : "s"}?`;
+		const plural = activeNames.size === 1 ? "" : "s";
+		const msg = `Stop all ${String(activeNames.size)} ${strings.memberTitle.toLowerCase()}${plural}?`;
 		const ok = await ctx.ui.confirm("Shutdown team", msg);
 		if (!ok) return;
 	}
 
-	const reason =
-		style === "soviet"
-			? `The ${strings.teamNoun} is dissolved by the chairman`
-			: "Stopped by /team shutdown";
+	const reason = "Stopped by /team shutdown";
 	// Stop RPC teammates we own
 	await stopAllTeammates(ctx, reason);
 

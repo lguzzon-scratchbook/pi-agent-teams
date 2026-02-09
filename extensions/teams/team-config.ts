@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { withLock } from "./fs-lock.js";
 import { sanitizeName } from "./names.js";
 import type { TeamsStyle } from "./teams-style.js";
+import { normalizeTeamsStyleId } from "./teams-style.js";
 
 export interface TeamMember {
 	name: string;
@@ -45,7 +46,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 function coerceStyle(v: unknown): TeamsStyle | undefined {
-	return v === "normal" || v === "soviet" ? v : undefined;
+	return normalizeTeamsStyleId(v) ?? undefined;
 }
 
 async function readJson(file: string): Promise<unknown | null> {

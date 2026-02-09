@@ -8,7 +8,7 @@ export function sanitizeName(name: string): string {
 }
 
 /** Pool of person names for auto-generated comrades (soviet style). */
-const COMRADE_NAMES = [
+export const COMRADE_NAME_POOL: readonly string[] = [
 	"ivan",
 	"natasha",
 	"boris",
@@ -41,12 +41,38 @@ const COMRADE_NAMES = [
 	"lydia",
 ];
 
+/** Pool of pirate-ish names for auto-generated mateys (pirate style). */
+export const PIRATE_NAME_POOL: readonly string[] = [
+	"blackbeard",
+	"anne-bonny",
+	"calico-jack",
+	"mary-read",
+	"long-john",
+	"redbeard",
+	"silver",
+	"bones",
+	"hook",
+	"sparrow",
+	"gibbs",
+	"barbossa",
+	"rackham",
+	"flint",
+	"morgan",
+	"teach",
+];
+
 /**
  * Pick `count` names from the pool that aren't already taken.
  * Falls back to `<name>-2`, `<name>-3` etc. if pool is exhausted.
  */
-export function pickComradeNames(count: number, taken: ReadonlySet<string>): string[] {
-	const available = COMRADE_NAMES.filter((n) => !taken.has(n));
+export function pickNamesFromPool(opts: {
+	pool: readonly string[];
+	count: number;
+	taken: ReadonlySet<string>;
+	fallbackBase: string;
+}): string[] {
+	const { pool, count, taken, fallbackBase } = opts;
+	const available = pool.filter((n) => !taken.has(n));
 	const picked: string[] = [];
 
 	for (let i = 0; i < count; i++) {
@@ -57,7 +83,7 @@ export function pickComradeNames(count: number, taken: ReadonlySet<string>): str
 		}
 
 		// Exhaust pool: append suffix to cycle through names again
-		const base = COMRADE_NAMES[i % COMRADE_NAMES.length] ?? "comrade";
+		const base = pool.length > 0 ? (pool[i % pool.length] ?? fallbackBase) : fallbackBase;
 		let suffix = 2;
 		let candidate = `${base}-${suffix}`;
 		while (taken.has(candidate) || picked.includes(candidate)) {
@@ -68,6 +94,14 @@ export function pickComradeNames(count: number, taken: ReadonlySet<string>): str
 	}
 
 	return picked;
+}
+
+export function pickComradeNames(count: number, taken: ReadonlySet<string>): string[] {
+	return pickNamesFromPool({ pool: COMRADE_NAME_POOL, count, taken, fallbackBase: "comrade" });
+}
+
+export function pickPirateNames(count: number, taken: ReadonlySet<string>): string[] {
+	return pickNamesFromPool({ pool: PIRATE_NAME_POOL, count, taken, fallbackBase: "matey" });
 }
 
 /**

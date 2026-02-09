@@ -3,11 +3,11 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { Type, type Static } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { writeToMailbox } from "./mailbox.js";
-import { pickAgentNames, pickComradeNames, sanitizeName } from "./names.js";
+import { pickAgentNames, pickNamesFromPool, sanitizeName } from "./names.js";
 import { getTeamDir } from "./paths.js";
 import { taskAssignmentPayload } from "./protocol.js";
 import { ensureTeamConfig } from "./team-config.js";
-import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName } from "./teams-style.js";
+import { getTeamsNamingRules, getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName } from "./teams-style.js";
 import { createTask } from "./task-store.js";
 import type { TeammateRpc } from "./teammate-rpc.js";
 import type { ContextMode, WorkspaceMode, SpawnTeammateFn } from "./spawn-types.js";
@@ -122,7 +122,16 @@ export function registerTeamsTool(opts: {
 				const maxTeammates = Math.max(1, Math.min(16, params.maxTeammates ?? 4));
 				const count = Math.min(maxTeammates, inputTasks.length);
 				const taken = new Set(teammates.keys());
-				teammateNames = style === "soviet" ? pickComradeNames(count, taken) : pickAgentNames(count, taken);
+				const naming = getTeamsNamingRules(style);
+				teammateNames =
+					naming.autoNameStrategy.kind === "agent"
+						? pickAgentNames(count, taken)
+						: pickNamesFromPool({
+							pool: naming.autoNameStrategy.pool,
+							count,
+							taken,
+							fallbackBase: naming.autoNameStrategy.fallbackBase,
+						});
 			}
 
 			const spawned: string[] = [];

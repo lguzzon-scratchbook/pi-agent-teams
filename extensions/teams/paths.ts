@@ -20,3 +20,8 @@ export function getTeamsRootDir(): string {
 export function getTeamDir(teamId: string): string {
 	return path.join(getTeamsRootDir(), teamId);
 }
+
+/** Directory for custom team UI styles (terminology + name rules). */
+export function getTeamsStylesDir(): string {
+	return path.join(getTeamsRootDir(), "_styles");
+}

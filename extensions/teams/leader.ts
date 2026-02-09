@@ -258,10 +258,8 @@ export function runLeader(pi: ExtensionAPI): void {
 			argsForChild.push("--no-extensions", "-e", teamsEntry);
 		}
 
-		const systemAppend =
-			style === "soviet"
-				? `You are comrade '${name}'. You collaborate with the chairman. Prefer working from the shared task list.\n`
-				: `You are teammate '${name}'. You collaborate with the team leader. Prefer working from the shared task list.\n`;
+		const strings = getTeamsStrings(style);
+		const systemAppend = `You are ${strings.memberTitle.toLowerCase()} '${name}'. You collaborate with the ${strings.leaderTitle.toLowerCase()}. Prefer working from the shared task list.\n`;
 		argsForChild.push("--append-system-prompt", systemAppend);
 
 		const autoClaim = (process.env.PI_TEAMS_DEFAULT_AUTO_CLAIM ?? "1") === "1";
@@ -294,7 +292,6 @@ export function runLeader(pi: ExtensionAPI): void {
 			return { ok: false, error: err instanceof Error ? err.message : String(err) };
 		}
 
-		const strings = getTeamsStrings(style);
 		const sessionName = `pi agent teams - ${strings.memberTitle.toLowerCase()} ${name}`;
 
 		// Leader-driven session naming (so teammates are easy to spot in /resume).
@@ -401,10 +398,7 @@ export function runLeader(pi: ExtensionAPI): void {
 	pi.on("session_switch", async (_event, ctx) => {
 		if (currentCtx) {
 			const strings = getTeamsStrings(style);
-			await stopAllTeammates(
-				currentCtx,
-				style === "soviet" ? `The ${strings.teamNoun} is dissolved — leader moved on` : "Stopped due to session switch",
-			);
+			await stopAllTeammates(currentCtx, `The ${strings.teamNoun} is dissolved — leader moved on`);
 		}
 		stopLoops();
 
@@ -453,7 +447,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		if (!currentCtx) return;
 		stopLoops();
 		const strings = getTeamsStrings(style);
-		await stopAllTeammates(currentCtx, style === "soviet" ? `The ${strings.teamNoun} is over` : "Stopped due to leader shutdown");
+		await stopAllTeammates(currentCtx, `The ${strings.teamNoun} is over`);
 	});
 
 	registerTeamsTool({

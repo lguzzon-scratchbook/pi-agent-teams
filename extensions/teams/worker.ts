@@ -104,7 +104,7 @@ function buildTaskPrompt(style: TeamsStyle, agentName: string, task: TeamTask, p
 		? "Produce a detailed implementation plan only. Do NOT make any changes or implement anything yet. Your plan will be reviewed before you can proceed."
 		: "Do the work now. When finished, reply with a concise summary and any key outputs.";
 
-	const actor = style === "soviet" ? strings.memberTitle.toLowerCase() : "teammate";
+	const actor = strings.memberTitle.toLowerCase();
 	return [
 		`You are ${actor} '${agentName}'.`,
 		`You have been assigned task #${task.id}.`,
