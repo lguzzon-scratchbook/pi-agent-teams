@@ -76,14 +76,14 @@ export function createTeamsWidget(deps: WidgetDeps): WidgetFactory {
 
 				const rows: WidgetRow[] = [];
 
-				// Chairman row (always first when team is active)
+				// Leader control row (always first when team is active)
 				const leadName = teamConfig?.leadName;
 				if (leadName) {
 					const leadTasks = tasks.filter((t) => t.owner === leadName);
 					rows.push({
 						icon: "\u25c6",
 						iconColor: "accent",
-						displayName: strings.leaderTitle,
+						displayName: strings.leaderControlTitle,
 						statusKey: "idle",
 						pending: leadTasks.filter((t) => t.status === "pending").length,
 						completed: leadTasks.filter((t) => t.status === "completed").length,

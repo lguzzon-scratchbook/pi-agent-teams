@@ -163,13 +163,13 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 
 					const rows: Row[] = [];
 
-					// Chairman
+					// Leader control
 					if (leadName) {
 						const leadTasks = tasks.filter((t) => t.owner === leadName);
 						rows.push({
 							icon: "\u25c6",
 							iconColor: "accent",
-							displayName: strings.leaderTitle,
+							displayName: strings.leaderControlTitle,
 							statusKey: "idle",
 							pending: leadTasks.filter((t) => t.status === "pending").length,
 							completed: leadTasks.filter((t) => t.status === "completed").length,

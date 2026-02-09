@@ -25,6 +25,7 @@ export function isSovietStyle(style: TeamsStyle): boolean {
 
 export type TeamsStrings = {
 	leaderTitle: string;
+	leaderControlTitle: string;
 	memberTitle: string;
 	memberPrefix: string;
 	teamNoun: string;
@@ -37,6 +38,7 @@ export function getTeamsStrings(style: TeamsStyle): TeamsStrings {
 	if (style === "soviet") {
 		return {
 			leaderTitle: "Chairman",
+			leaderControlTitle: "Chairman (control)",
 			memberTitle: "Comrade",
 			memberPrefix: "Comrade ",
 			teamNoun: "Party",
@@ -47,6 +49,7 @@ export function getTeamsStrings(style: TeamsStyle): TeamsStrings {
 	}
 	return {
 		leaderTitle: "Team leader",
+		leaderControlTitle: "Leader (control)",
 		memberTitle: "Teammate",
 		memberPrefix: "Teammate ",
 		teamNoun: "team",
