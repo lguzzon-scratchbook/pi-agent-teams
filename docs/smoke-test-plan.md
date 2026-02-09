@@ -104,6 +104,14 @@ Ask the model:
 
 **Expected:** agent1 goes offline, widget updates.
 
+Optional: stop all teammates without ending the leader session:
+
+```
+/team shutdown
+```
+
+**Expected:** all teammates stop; leader remains active until you exit it (e.g. ctrl+d).
+
 ## 4. Worker-side Smoke (verifying child process)
 
 To test the worker role directly:

@@ -79,6 +79,7 @@ Or drive it manually:
 /tw                                        # open the interactive widget panel
 
 /team shutdown alice                       # graceful shutdown (handshake)
+/team shutdown                             # stop all teammates (leader session remains active)
 /team cleanup                              # remove team artifacts when done
 ```
 
@@ -105,6 +106,7 @@ Or let the model drive it with the delegate tool:
 | --- | --- |
 | `/swarm [task]` | Tell the agent to spawn a team and work on a task |
 | `/tw` | Open the interactive widget panel |
+| `/team-widget` | Open the interactive widget panel (alias for `/tw`) |
 
 ### Team management
 
