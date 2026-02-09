@@ -142,6 +142,7 @@ All management commands live under `/team`.
 | `/team panel` | Interactive widget panel (same as `/tw`) |
 | `/team style` | Show current style + usage |
 | `/team style list` | List available styles (built-in + custom) |
+| `/team style init <name> [extends <base>]` | Create a custom style template under `~/.pi/agent/teams/_styles/` |
 | `/team style <name>` | Set style (built-in or custom) |
 | `/team send <name> <msg>` | Send a prompt over RPC |
 | `/team steer <name> <msg>` | Redirect an in-flight run |

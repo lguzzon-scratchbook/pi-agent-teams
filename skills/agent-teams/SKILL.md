@@ -23,7 +23,9 @@ Built-in styles:
 
 Configure via `PI_TEAMS_STYLE=<name>` or `/team style <name>` (see `/team style list`).
 
-Custom styles can be added via JSON files under `~/.pi/agent/teams/_styles/<style>.json`.
+Custom styles can be added via JSON files under `~/.pi/agent/teams/_styles/<style>.json` or bootstrapped with:
+
+- `/team style init <name> [extends <base>]`
 
 ## Spawning teammates
 
