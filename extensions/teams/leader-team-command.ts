@@ -33,7 +33,7 @@ const TEAM_HELP_TEXT = [
 	"Usage:",
 	"  /team id",
 	"  /team env <name>",
-	"  /team spawn <name> [fresh|branch] [shared|worktree] [plan]",
+	"  /team spawn <name> [fresh|branch] [shared|worktree] [plan] [--model <provider>/<modelId>] [--thinking <level>]",
 	"  /team panel",
 	"  /team send <name> <msg...>",
 	"  /team dm <name> <msg...>",

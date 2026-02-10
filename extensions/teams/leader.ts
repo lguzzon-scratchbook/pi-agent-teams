@@ -198,6 +198,40 @@ export function runLeader(pi: ExtensionAPI): void {
 			return { ok: false, error: `${formatMemberDisplayName(style, name)} already exists (${strings.teamNoun})` };
 		}
 
+		// Spawn-time model / thinking overrides (optional).
+		const thinkingLevel = opts.thinking ?? pi.getThinkingLevel();
+		let childProvider: string | undefined;
+		let childModelId: string | undefined;
+
+		const modelOverrideRaw = opts.model?.trim();
+		if (modelOverrideRaw) {
+			const slashIdx = modelOverrideRaw.indexOf("/");
+			if (slashIdx >= 0) {
+				const provider = modelOverrideRaw.slice(0, slashIdx).trim();
+				const id = modelOverrideRaw.slice(slashIdx + 1).trim();
+				if (!provider || !id) {
+					return {
+						ok: false,
+						error: `Invalid model override '${modelOverrideRaw}'. Expected <provider>/<modelId>.`,
+					};
+				}
+				childProvider = provider;
+				childModelId = id;
+			} else {
+				childModelId = modelOverrideRaw;
+				childProvider = ctx.model?.provider;
+				if (!childProvider) {
+					warnings.push(
+						`Model override '${modelOverrideRaw}' provided without a provider. ` +
+							`Teammate will use its default provider; use <provider>/<modelId> to force one.`,
+					);
+				}
+			}
+		} else if (ctx.model) {
+			childProvider = ctx.model.provider;
+			childModelId = ctx.model.id;
+		}
+
 		const teamId = ctx.sessionManager.getSessionId();
 		const teamDir = getTeamDir(teamId);
 		const teamSessionsDir = getTeamSessionsDir(teamDir);
@@ -247,11 +281,12 @@ export function runLeader(pi: ExtensionAPI): void {
 		argsForChild.push("--session-dir", teamSessionsDir);
 		if (tools.length) argsForChild.push("--tools", tools.join(","));
 
-		// Inherit model + thinking level to keep teammates consistent and avoid surprises.
-		if (ctx.model) {
-			argsForChild.push("--provider", ctx.model.provider, "--model", ctx.model.id);
+		// Model + thinking for the child process.
+		if (childModelId) {
+			if (childProvider) argsForChild.push("--provider", childProvider);
+			argsForChild.push("--model", childModelId);
 		}
-		argsForChild.push("--thinking", pi.getThinkingLevel());
+		argsForChild.push("--thinking", thinkingLevel);
 
 		const teamsEntry = getTeamsExtensionEntryPath();
 		if (teamsEntry) {
@@ -320,7 +355,12 @@ export function runLeader(pi: ExtensionAPI): void {
 			status: "online",
 			cwd: childCwd,
 			sessionFile,
-			meta: { workspaceMode, sessionName },
+			meta: {
+				workspaceMode,
+				sessionName,
+				thinkingLevel,
+				...(childModelId ? { model: childProvider ? `${childProvider}/${childModelId}` : childModelId } : {}),
+			},
 		});
 
 		await refreshTasks();

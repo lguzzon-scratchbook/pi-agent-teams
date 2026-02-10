@@ -29,6 +29,11 @@ const TeamsWorkspaceModeSchema = StringEnum(["shared", "worktree"] as const, {
 	default: "shared",
 });
 
+const TeamsThinkingLevelSchema = StringEnum(["off", "minimal", "low", "medium", "high", "xhigh"] as const, {
+	description:
+		"Thinking level to use for spawned comrades (defaults to the leader's current thinking level when omitted).",
+});
+
 const TeamsDelegateTaskSchema = Type.Object({
 	text: Type.String({ description: "Task / TODO text." }),
 	assignee: Type.Optional(Type.String({ description: "Optional comrade name. If omitted, assigned round-robin." })),
@@ -52,6 +57,13 @@ const TeamsToolParamsSchema = Type.Object({
 	),
 	contextMode: Type.Optional(TeamsContextModeSchema),
 	workspaceMode: Type.Optional(TeamsWorkspaceModeSchema),
+	model: Type.Optional(
+		Type.String({
+			description:
+				"Optional model override for spawned comrades. Use '<provider>/<modelId>' (e.g. 'anthropic/claude-sonnet-4'). If you pass only '<modelId>', the provider is inherited from the leader when available.",
+		}),
+	),
+	thinking: Type.Optional(TeamsThinkingLevelSchema),
 });
 
 type TeamsToolParamsType = Static<typeof TeamsToolParamsSchema>;
@@ -73,6 +85,7 @@ export function registerTeamsTool(opts: {
 			"Spawn comrade agents and delegate tasks. Each comrade is a child Pi process that executes work autonomously and reports back.",
 			"Provide a list of tasks with optional assignees; comrades are spawned automatically and assigned round-robin if unspecified.",
 			"Options: contextMode=branch (clone session context), workspaceMode=worktree (git worktree isolation).",
+			"Optional overrides: model='<provider>/<modelId>' and thinking (off|minimal|low|medium|high|xhigh).",
 			"For governance, the user can run /team delegate on (leader restricted to coordination) or /team spawn <name> plan (worker needs plan approval).",
 		].join(" "),
 		parameters: TeamsToolParamsSchema,
@@ -96,6 +109,9 @@ export function registerTeamsTool(opts: {
 
 			const contextMode: ContextMode = params.contextMode === "branch" ? "branch" : "fresh";
 			const requestedWorkspaceMode: WorkspaceMode = params.workspaceMode === "worktree" ? "worktree" : "shared";
+			const modelOverride = params.model?.trim();
+			const spawnModel = modelOverride && modelOverride.length > 0 ? modelOverride : undefined;
+			const spawnThinking = params.thinking;
 
 			const teamId = ctx.sessionManager.getSessionId();
 			const teamDir = getTeamDir(teamId);
@@ -144,6 +160,8 @@ export function registerTeamsTool(opts: {
 					name,
 					mode: contextMode,
 					workspaceMode: requestedWorkspaceMode,
+					model: spawnModel,
+					thinking: spawnThinking,
 				});
 				if (!res.ok) {
 					warnings.push(`Failed to spawn '${name}': ${res.error}`);
@@ -178,6 +196,8 @@ export function registerTeamsTool(opts: {
 						name: assignee,
 						mode: contextMode,
 						workspaceMode: requestedWorkspaceMode,
+						model: spawnModel,
+						thinking: spawnThinking,
 					});
 					if (res.ok) {
 						spawned.push(res.name);
@@ -226,6 +246,8 @@ export function registerTeamsTool(opts: {
 					teamId,
 					contextMode,
 					workspaceMode: requestedWorkspaceMode,
+					model: spawnModel,
+					thinking: spawnThinking,
 					spawned,
 					assignments,
 					warnings,

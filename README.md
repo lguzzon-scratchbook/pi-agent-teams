@@ -117,6 +117,8 @@ Or let the model drive it with the delegate tool:
   "action": "delegate",
   "contextMode": "branch",
   "workspaceMode": "worktree",
+  "model": "anthropic/claude-sonnet-4",
+  "thinking": "high",
   "teammates": ["alice", "bob"],
   "tasks": [
     { "text": "Fix failing unit tests" },
@@ -141,7 +143,7 @@ All management commands live under `/team`.
 
 | Command | Description |
 | --- | --- |
-| `/team spawn <name> [fresh\|branch] [shared\|worktree]` | Start a teammate |
+| `/team spawn <name> [fresh\|branch] [shared\|worktree] [plan] [--model <provider>/<modelId>] [--thinking <level>]` | Start a teammate |
 | `/team list` | List teammates and their status |
 | `/team panel` | Interactive widget panel (same as `/tw`) |
 | `/team style` | Show current style + usage |
