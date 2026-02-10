@@ -34,7 +34,8 @@ import {
 import { sleep, spawnTeamsWorkerRpc, terminateAll } from "./lib/pi-workers.js";
 
 function parseArgs(argv: readonly string[]): { timeoutSec: number; pollMs: number } {
-	let timeoutSec = 15 * 60;
+	// Default is intentionally generous: model speed and provider availability vary.
+	let timeoutSec = 25 * 60;
 	let pollMs = 1500;
 
 	for (let i = 0; i < argv.length; i += 1) {
@@ -53,7 +54,7 @@ function parseArgs(argv: readonly string[]): { timeoutSec: number; pollMs: numbe
 		}
 	}
 
-	if (!Number.isFinite(timeoutSec) || timeoutSec < 60) timeoutSec = 15 * 60;
+	if (!Number.isFinite(timeoutSec) || timeoutSec < 60) timeoutSec = 25 * 60;
 	if (!Number.isFinite(pollMs) || pollMs < 250) pollMs = 1500;
 	return { timeoutSec, pollMs };
 }

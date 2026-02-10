@@ -19,6 +19,7 @@ Additional Pi-specific capabilities:
 
 - **Git worktrees** — optionally give each teammate its own worktree so they work on isolated branches without conflicting edits.
 - **Session branching** — clone the leader's conversation context into a teammate so it starts with full awareness of the work so far, instead of from scratch.
+- **Hooks / quality gates** — optional leader-side hooks on idle / task completion to run scripts (opt-in).
 
 ## UI style (terminology + naming)
 
@@ -184,6 +185,10 @@ All management commands live under `/team`.
 | `PI_TEAMS_ROOT_DIR` | Storage root (absolute or relative to `~/.pi/agent`) | `~/.pi/agent/teams` |
 | `PI_TEAMS_DEFAULT_AUTO_CLAIM` | Whether spawned teammates auto-claim tasks | `1` (on) |
 | `PI_TEAMS_STYLE` | UI style id (built-in: `normal`, `soviet`, `pirate`, or custom) | `normal` |
+| `PI_TEAMS_HOOKS_ENABLED` | Enable leader-side hooks/quality gates | `0` (off) |
+| `PI_TEAMS_HOOKS_DIR` | Hooks directory (absolute or relative to `PI_TEAMS_ROOT_DIR`) | `<teamsRoot>/_hooks` |
+| `PI_TEAMS_HOOK_TIMEOUT_MS` | Hook execution timeout (ms) | `60000` |
+| `PI_TEAMS_HOOKS_CREATE_TASK_ON_FAILURE` | If `1`, create a follow-up task when a task hook fails | `0` (off) |
 
 ## Storage layout
 
@@ -197,6 +202,43 @@ All management commands live under `/team`.
     <agent>.json                        # per-agent inbox
   sessions/                             # teammate session files
   worktrees/<agent>/                    # git worktrees (when enabled)
+
+<teamsRoot>/_hooks/
+  on_idle.{js,sh}                       # optional hook (see below)
+  on_task_completed.{js,sh}             # optional quality gate
+  on_task_failed.{js,sh}                # optional hook
+```
+
+## Hooks / quality gates (optional)
+
+Enable hooks:
+
+```bash
+export PI_TEAMS_HOOKS_ENABLED=1
+```
+
+Then create hook scripts under:
+
+- `<teamsRoot>/_hooks/` (default: `~/.pi/agent/teams/_hooks/`)
+
+Recognized hook names:
+
+- `on_idle.(js|mjs|sh)`
+- `on_task_completed.(js|mjs|sh)`
+- `on_task_failed.(js|mjs|sh)`
+
+Hooks run with working directory = the **leader session cwd** and receive context via env vars:
+
+- `PI_TEAMS_HOOK_EVENT`
+- `PI_TEAMS_TEAM_ID`, `PI_TEAMS_TEAM_DIR`, `PI_TEAMS_TASK_LIST_ID`
+- `PI_TEAMS_STYLE`
+- `PI_TEAMS_MEMBER`
+- `PI_TEAMS_TASK_ID`, `PI_TEAMS_TASK_SUBJECT`, `PI_TEAMS_TASK_OWNER`, `PI_TEAMS_TASK_STATUS`
+
+If you want hook failures to create a follow-up task automatically:
+
+```bash
+export PI_TEAMS_HOOKS_CREATE_TASK_ON_FAILURE=1
 ```
 
 ## Development

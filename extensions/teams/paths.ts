@@ -25,3 +25,13 @@ export function getTeamDir(teamId: string): string {
 export function getTeamsStylesDir(): string {
 	return path.join(getTeamsRootDir(), "_styles");
 }
+
+/** Directory for hook scripts and hook configuration (quality gates). */
+export function getTeamsHooksDir(): string {
+	const override = process.env.PI_TEAMS_HOOKS_DIR;
+	if (override && override.trim()) {
+		const p = override.trim();
+		return path.isAbsolute(p) ? p : path.join(getTeamsRootDir(), p);
+	}
+	return path.join(getTeamsRootDir(), "_hooks");
+}

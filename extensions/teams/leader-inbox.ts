@@ -10,7 +10,9 @@ import {
 	isShutdownRejected,
 } from "./protocol.js";
 import { ensureTeamConfig, setMemberStatus, upsertMember } from "./team-config.js";
+import { getTask } from "./task-store.js";
 
+import type { TeamsHookInvocation } from "./hooks.js";
 import type { TeamsStyle } from "./teams-style.js";
 import { formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 
@@ -22,8 +24,9 @@ export async function pollLeaderInbox(opts: {
 	leadName: string;
 	style: TeamsStyle;
 	pendingPlanApprovals: Map<string, { requestId: string; name: string; taskId?: string }>;
+	enqueueHook?: (invocation: TeamsHookInvocation) => void;
 }): Promise<void> {
-	const { ctx, teamId, teamDir, taskListId, leadName, style, pendingPlanApprovals } = opts;
+	const { ctx, teamId, teamDir, taskListId, leadName, style, pendingPlanApprovals, enqueueHook } = opts;
 	const strings = getTeamsStrings(style);
 
 	let msgs: Awaited<ReturnType<typeof popUnreadMessages>>;
@@ -95,6 +98,42 @@ export async function pollLeaderInbox(opts: {
 		const idle = isIdleNotification(m.text);
 		if (idle) {
 			const name = sanitizeName(idle.from);
+
+			// Hook: always emit "idle" (best-effort, non-blocking)
+			try {
+				enqueueHook?.({
+					event: "idle",
+					teamId,
+					teamDir,
+					taskListId,
+					style,
+					memberName: name,
+					timestamp: idle.timestamp,
+					completedTask: null,
+				});
+			} catch {
+				// ignore hook enqueue errors
+			}
+
+			// Hook: task completion / failure
+			if (idle.completedTaskId) {
+				const completedTask = await getTask(teamDir, taskListId, idle.completedTaskId);
+				try {
+					enqueueHook?.({
+						event: idle.completedStatus === "failed" ? "task_failed" : "task_completed",
+						teamId,
+						teamDir,
+						taskListId,
+						style,
+						memberName: name,
+						timestamp: idle.timestamp,
+						completedTask,
+					});
+				} catch {
+					// ignore hook enqueue errors
+				}
+			}
+
 			if (idle.failureReason) {
 				const cfg = await ensureTeamConfig(teamDir, {
 					teamId,

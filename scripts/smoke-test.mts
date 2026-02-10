@@ -32,6 +32,7 @@ import {
 import { ensureTeamConfig, loadTeamConfig, upsertMember, setMemberStatus } from "../extensions/teams/team-config.js";
 import { sanitizeName } from "../extensions/teams/names.js";
 import { getTeamsNamingRules, getTeamsStrings } from "../extensions/teams/teams-style.js";
+import { runTeamsHook } from "../extensions/teams/hooks.js";
 import { getTeamHelpText } from "../extensions/teams/leader-team-command.js";
 import {
 	TEAM_MAILBOX_NS,
@@ -456,8 +457,69 @@ console.log("\n8. teams-style (custom styles)");
 	else process.env.PI_TEAMS_ROOT_DIR = prev;
 }
 
-// ── 9. docs/help drift guard ────────────────────────────────────────
-console.log("\n9. docs/help drift guard");
+// ── 9. hooks (quality gates) ────────────────────────────────────────
+console.log("\n9. teams-hooks (quality gates)");
+{
+	const prevRoot = process.env.PI_TEAMS_ROOT_DIR;
+	const prevEnabled = process.env.PI_TEAMS_HOOKS_ENABLED;
+	process.env.PI_TEAMS_ROOT_DIR = tmpRoot;
+	process.env.PI_TEAMS_HOOKS_ENABLED = "1";
+
+	const hooksDir = path.join(tmpRoot, "_hooks");
+	fs.mkdirSync(hooksDir, { recursive: true });
+
+	const outFile = path.join(tmpRoot, "hook-ran.txt");
+	fs.writeFileSync(
+		path.join(hooksDir, "on_task_completed.js"),
+		"" +
+			"const fs = require('node:fs');\n" +
+			`fs.writeFileSync(${JSON.stringify(outFile)}, 'ok\\n', 'utf8');\n` +
+			"process.exit(0);\n",
+		"utf8",
+	);
+
+	const teamId = "smoke-team";
+	const teamDir = path.join(tmpRoot, teamId);
+	fs.mkdirSync(teamDir, { recursive: true });
+
+	const res = await runTeamsHook({
+		invocation: {
+			event: "task_completed",
+			teamId,
+			teamDir,
+			taskListId: teamId,
+			style: "pirate",
+			memberName: "agent1",
+			timestamp: new Date().toISOString(),
+			completedTask: {
+				id: "1",
+				subject: "Test task",
+				description: "",
+				owner: "agent1",
+				status: "completed",
+				blocks: [],
+				blockedBy: [],
+				metadata: {},
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		},
+		cwd: tmpRoot,
+	});
+
+	assert(res.ran === true, "runs on_task_completed hook");
+	assert(res.exitCode === 0, "hook exit code is 0");
+	assert(fs.existsSync(outFile), "hook wrote output file");
+
+	// restore env
+	if (prevRoot === undefined) delete process.env.PI_TEAMS_ROOT_DIR;
+	else process.env.PI_TEAMS_ROOT_DIR = prevRoot;
+	if (prevEnabled === undefined) delete process.env.PI_TEAMS_HOOKS_ENABLED;
+	else process.env.PI_TEAMS_HOOKS_ENABLED = prevEnabled;
+}
+
+// ── 10. docs/help drift guard ────────────────────────────────────────
+console.log("\n10. docs/help drift guard");
 {
 	const help = getTeamHelpText();
 	assert(help.includes("/team style list"), "help mentions /team style list");

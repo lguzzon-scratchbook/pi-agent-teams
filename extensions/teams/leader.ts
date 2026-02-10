@@ -6,7 +6,7 @@ import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { writeToMailbox } from "./mailbox.js";
 import { sanitizeName } from "./names.js";
 import { TEAM_MAILBOX_NS } from "./protocol.js";
-import { listTasks, unassignTasksForAgent, type TeamTask } from "./task-store.js";
+import { createTask, listTasks, unassignTasksForAgent, type TeamTask } from "./task-store.js";
 import { TeammateRpc } from "./teammate-rpc.js";
 import { ensureTeamConfig, loadTeamConfig, setMemberStatus, upsertMember, type TeamConfig } from "./team-config.js";
 import { getTeamDir } from "./paths.js";
@@ -16,6 +16,7 @@ import { openInteractiveWidget } from "./teams-panel.js";
 import { createTeamsWidget } from "./teams-widget.js";
 import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 import { pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
+import { getHookBaseName, runTeamsHook, type TeamsHookInvocation } from "./hooks.js";
 import { handleTeamCommand } from "./leader-team-command.js";
 import { registerTeamsTool } from "./leader-teams-tool.js";
 import type { ContextMode, SpawnTeammateFn, SpawnTeammateResult, WorkspaceMode } from "./spawn-types.js";
@@ -149,6 +150,108 @@ export function runLeader(pi: ExtensionAPI): void {
 		} finally {
 			isStopping = false;
 		}
+	};
+
+	// Hooks / quality gates (serialized execution so multiple idle events don't overlap).
+	let hookChain: Promise<void> = Promise.resolve();
+	const seenHookEvents = new Set<string>();
+
+	const enqueueHook = (invocation: TeamsHookInvocation) => {
+		const taskId = invocation.completedTask?.id ?? "";
+		const ts = invocation.timestamp ?? "";
+		const key = `${invocation.teamId}:${invocation.event}:${taskId}:${ts}:${invocation.memberName ?? ""}`;
+		if (seenHookEvents.has(key)) return;
+		seenHookEvents.add(key);
+
+		hookChain = hookChain
+			.then(async () => {
+				// Only run hooks for the currently active team session.
+				if (!currentCtx) return;
+				if (currentCtx.sessionManager.getSessionId() !== invocation.teamId) return;
+
+				const res = await runTeamsHook({ invocation, cwd: currentCtx.cwd });
+				if (!res.ran) return;
+
+				// Persist a log for debugging.
+				try {
+					const logsDir = path.join(invocation.teamDir, "hook-logs");
+					await fs.promises.mkdir(logsDir, { recursive: true });
+					const name = `${new Date().toISOString().replace(/[:.]/g, "-")}_${invocation.event}.json`;
+					await fs.promises.writeFile(
+						path.join(logsDir, name),
+						JSON.stringify(
+							{
+								invocation,
+								result: res,
+							},
+							null,
+							2,
+						) + "\n",
+						"utf8",
+					);
+				} catch {
+					// ignore logging errors
+				}
+
+				const ok = res.exitCode === 0 && !res.timedOut && !res.error;
+				const hookName = getHookBaseName(invocation.event);
+
+				// Idle hooks are intentionally quiet unless they fail.
+				if (invocation.event === "idle") {
+					if (!ok) {
+						currentCtx.ui.notify(
+							`Hook ${hookName} failed${res.timedOut ? " (timeout)" : ""}${res.exitCode !== null ? ` (code ${res.exitCode})` : ""}`,
+							"warning",
+						);
+					}
+					return;
+				}
+
+				// Task-completion hooks are visible.
+				if (ok) {
+					currentCtx.ui.notify(`Hook ${hookName} passed (${res.durationMs}ms)`, "info");
+					return;
+				}
+
+				currentCtx.ui.notify(
+					`Hook ${hookName} failed${res.timedOut ? " (timeout)" : ""}${res.exitCode !== null ? ` (code ${res.exitCode})` : ""}`,
+					"warning",
+				);
+
+				// Optional: on failure, create a follow-up task so it shows up in the shared list.
+				const createOnFail = process.env.PI_TEAMS_HOOKS_CREATE_TASK_ON_FAILURE === "1";
+				const task = invocation.completedTask;
+				if (createOnFail && task?.id) {
+					const subject = `Quality gate failed: ${hookName} (task #${task.id})`;
+					const descParts: string[] = [];
+					descParts.push(`Hook: ${hookName}`);
+					if (res.command?.length) descParts.push(`Command: ${res.command.join(" ")}`);
+					descParts.push("");
+					if (task.subject) descParts.push(`Original task subject: ${task.subject}`);
+					descParts.push("");
+					if (res.stdout.trim()) {
+						descParts.push("STDOUT:");
+						descParts.push(res.stdout.trim());
+						descParts.push("");
+					}
+					if (res.stderr.trim()) {
+						descParts.push("STDERR:");
+						descParts.push(res.stderr.trim());
+						descParts.push("");
+					}
+
+					await createTask(invocation.teamDir, invocation.taskListId, {
+						subject,
+						description: descParts.join("\n"),
+					});
+					await refreshTasks();
+					renderWidget();
+				}
+			})
+			.catch((err: unknown) => {
+				if (!currentCtx) return;
+				currentCtx.ui.notify(err instanceof Error ? err.message : String(err), "warning");
+			});
 	};
 
 	const widgetFactory = createTeamsWidget({
@@ -381,6 +484,7 @@ export function runLeader(pi: ExtensionAPI): void {
 			leadName: teamConfig?.leadName ?? "team-lead",
 			style,
 			pendingPlanApprovals,
+			enqueueHook,
 		});
 	};
 

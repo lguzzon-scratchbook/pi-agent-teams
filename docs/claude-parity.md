@@ -53,7 +53,7 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
 | Plan approval | Comrade can be “plan required” and needs lead approval to implement | ✅ | `/team spawn <name> plan` → read-only tools; sends `plan_approval_request`; `/team plan approve|reject`. | P1 |
 | Shutdown handshake | Lead requests shutdown; comrade can approve/reject | ✅ | Protocol: `shutdown_request` → `shutdown_approved` / `shutdown_rejected`. `/team shutdown <name>` (graceful), `/team kill <name>` (SIGTERM). Wording is style-controlled (e.g. “was asked to shut down”, “walked the plank”). | P1 |
 | Cleanup team | “Clean up the team” removes shared resources after comrades stopped | ✅ | `/team cleanup [--force]` deletes only `<teamsRoot>/<teamId>` after safety checks. | P1 |
-| Hooks / quality gates | `ComradeIdle`, `TaskCompleted` hooks | ❌ | Add optional hook runner in leader on idle/task-complete events (script execution + exit-code gating). | P2 |
+| Hooks / quality gates | `ComradeIdle`, `TaskCompleted` hooks | 🟡 | Optional leader-side hook runner (idle/task-complete/task-fail) via `PI_TEAMS_HOOKS_ENABLED=1` + scripts under `_hooks/`. Still missing richer gating UX + standardized hook contract. | P2 |
 | Task list UX | Ctrl+T toggle; show all/clear tasks by asking | 🟡 | Widget + `/team task list` + `/team task show` + `/team task clear`. No Ctrl+T toggle yet. | P0 |
 | Shared task list across sessions | `CLAUDE_CODE_TASK_LIST_ID=...` | ✅ | Worker env: `PI_TEAMS_TASK_LIST_ID` (manual workers). Leader: `/team task use <taskListId>` (persisted). Newly spawned workers inherit; existing workers need restart. | P1 |
 
@@ -100,11 +100,9 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
 
 ### P2: UX + “product-level” parity
 
-10) **Hooks / quality gates**
-   - Optional hook runner in leader for events like:
-     - comrade idle
-     - task completed / failed
-   - Must be safe-by-default (timeouts, opt-in, clear logs).
+10) **Hooks / quality gates** 🟡 (partial)
+   - Implemented: optional leader-side hook runner (opt-in + timeout + logs).
+   - Still missing: richer gating UX (e.g. surfacing hook failures inline, controlling whether failures reopen tasks / block future work).
 
 11) **Better comrade interaction UX (within Pi constraints)**
    - Improve the existing widget/panel affordances (selection, transcript view, actions)
