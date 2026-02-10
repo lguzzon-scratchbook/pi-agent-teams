@@ -89,7 +89,7 @@ function builtinStyle(id: BuiltinTeamsStyle): TeamsStyleDefinition {
 				teamNoun: "crew",
 				joinedVerb: "joined the crew",
 				leftVerb: "abandoned ship",
-				killedVerb: "sent overboard",
+				killedVerb: "walked the plank",
 			},
 			naming: {
 				requireExplicitSpawnName: false,

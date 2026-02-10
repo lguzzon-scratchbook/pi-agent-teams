@@ -557,7 +557,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 								if (sessionName) {
 									const name = sessionName;
 									deps.killMember(name);
-									showNotification(`${formatMemberDisplayName(style, name)} ${strings.killedVerb}`, "error");
+									showNotification(`${formatMemberDisplayName(style, name)} ${strings.killedVerb} (SIGTERM)`, "warning");
 									mode = "overview";
 									sessionName = null;
 									tui.requestRender();
@@ -621,7 +621,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 							const name = memberNames[cursorIndex];
 							if (name) {
 								deps.killMember(name);
-								showNotification(`${formatMemberDisplayName(style, name)} ${strings.killedVerb}`, "error");
+								showNotification(`${formatMemberDisplayName(style, name)} ${strings.killedVerb} (SIGTERM)`, "warning");
 								tui.requestRender();
 							}
 							return;
