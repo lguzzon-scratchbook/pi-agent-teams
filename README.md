@@ -207,7 +207,7 @@ All management commands live under `/team`.
 - `↑/↓` or `w/s`: select teammate / scroll transcript
 - `1..9`: jump directly to teammate in overview
 - `enter`: open selected teammate transcript
-- `t`: open selected teammate task list (task-centric view with deps/blocks)
+- `t` or `ctrl+t`: open selected teammate task list (task-centric view with deps/blocks); in task view, toggle back
 - task view: `c` complete, `p` pending, `i` in-progress, `u` unassign, `r` reassign selected task
 - `m` or `d`: compose message to selected teammate
 - `a`: request abort

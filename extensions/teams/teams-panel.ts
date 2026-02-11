@@ -197,6 +197,10 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					);
 				}
 
+				function isTaskToggleKey(data: string): boolean {
+					return data === "t" || matchesKey(data, "ctrl+t");
+				}
+
 				function showNotification(text: string, color: ThemeColor = "success") {
 					notification = { text, color };
 					if (notificationTimer) clearTimeout(notificationTimer);
@@ -445,7 +449,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					// Hints
 					const hints = theme.fg(
 						"dim",
-						" \u2191\u2193/ws select \u00b7 1-9 jump \u00b7 enter view \u00b7 t tasks \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc close",
+						" \u2191\u2193/ws select \u00b7 1-9 jump \u00b7 enter view \u00b7 t/ctrl+t tasks \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc close",
 					);
 					lines.push(truncateToWidth(hints, width));
 
@@ -558,7 +562,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					// Hints
 					lines.push(truncateToWidth(` ${sep}`, width));
 					lines.push(truncateToWidth(
-						theme.fg("dim", " \u2191\u2193/ws scroll \u00b7 g follow \u00b7 t tasks \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc back"),
+						theme.fg("dim", " \u2191\u2193/ws scroll \u00b7 g follow \u00b7 t/ctrl+t tasks \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc back"),
 						width,
 					));
 
@@ -587,7 +591,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 
 					const lines: string[] = [];
 					const sep = theme.fg("dim", "─".repeat(Math.max(0, width - 2)));
-					const returnLabel = taskReturnMode === "session" ? "esc back to transcript" : "esc back";
+					const returnLabel = taskReturnMode === "session" ? "esc/ctrl+t back to transcript" : "esc/ctrl+t back";
 
 					lines.push(truncateToWidth(` ${theme.bold(theme.fg("accent", `Tasks · ${ownerLabel}`))}`, width));
 					const attachBanner = renderAttachBanner(width);
@@ -895,7 +899,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 
 						// ── Tasks mode ──
 						if (mode === "tasks") {
-							if (matchesKey(data, "escape") || data === "t") {
+							if (matchesKey(data, "escape") || isTaskToggleKey(data)) {
 								mode = taskReturnMode;
 								taskViewOwner = null;
 								tui.requestRender();
@@ -1036,7 +1040,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 								tui.requestRender();
 								return;
 							}
-							if (data === "t" && sessionName) {
+							if (isTaskToggleKey(data) && sessionName) {
 								openTaskView(sessionName, "session");
 								return;
 							}
@@ -1098,7 +1102,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 							}
 							return;
 						}
-						if (data === "t") {
+						if (isTaskToggleKey(data)) {
 							const name = memberNames[cursorIndex];
 							if (name) openTaskView(name, "overview");
 							return;
