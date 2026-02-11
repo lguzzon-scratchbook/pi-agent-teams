@@ -32,6 +32,7 @@
     "check": "npm run typecheck && npm run lint",
     "smoke-test": "tsx scripts/smoke-test.mts",
     "integration-claim-test": "tsx scripts/integration-claim-test.mts",
+    "integration-spawn-overrides-test": "tsx scripts/integration-spawn-overrides-test.mts",
     "integration-todo-test": "tsx scripts/integration-todo-test.mts"
   },
   "devDependencies": {
