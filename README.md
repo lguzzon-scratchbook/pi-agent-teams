@@ -12,7 +12,7 @@ Core agent-teams primitives, matching Claude's design:
 - **Auto-claim** — idle teammates automatically pick up the next unassigned, unblocked task. No manual dispatching required (disable with `PI_TEAMS_DEFAULT_AUTO_CLAIM=0`).
 - **Direct messages and broadcast** — send a message to one teammate or all of them at once, via file-based mailboxes.
 - **Graceful lifecycle** — spawn, stop, shutdown (with handshake), or kill teammates. The leader tracks who's online, idle, or streaming.
-- **LLM-callable teams tool** — the model can spawn teammates, delegate tasks, mutate task assignment/status/dependencies, and message teammates in tool calls (no slash commands needed).
+- **LLM-callable teams tool** — the model can spawn teammates, delegate tasks, mutate task assignment/status/dependencies, message teammates, and run lifecycle actions in tool calls (no slash commands needed).
 - **Team cleanup** — tear down all team artifacts (tasks, mailboxes, sessions, worktrees) when you're done.
 
 Additional Pi-specific capabilities:
@@ -143,6 +143,10 @@ Task/messaging mutation examples (agent-run, no user command needed):
 { "action": "message_dm", "name": "alice", "message": "Please re-check the failing test" }
 { "action": "message_broadcast", "message": "Sync: finishing this milestone" }
 { "action": "message_steer", "name": "alice", "message": "Change plan: prioritize bug #402" }
+{ "action": "member_spawn", "name": "alice", "contextMode": "branch", "workspaceMode": "worktree" }
+{ "action": "member_shutdown", "name": "alice", "reason": "checkpoint reached" }
+{ "action": "member_kill", "name": "alice" }
+{ "action": "member_prune", "all": true }
 ```
 
 ## Commands

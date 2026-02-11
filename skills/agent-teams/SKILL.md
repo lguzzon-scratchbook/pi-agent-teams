@@ -41,9 +41,13 @@ teams({ action: "task_dep_ls", taskId: "12" })
 teams({ action: "message_dm", name: "alice", message: "Please re-check the failing test" })
 teams({ action: "message_broadcast", message: "Sync: finishing this milestone" })
 teams({ action: "message_steer", name: "alice", message: "Change plan: prioritize bug #402" })
+teams({ action: "member_spawn", name: "alice", contextMode: "branch", workspaceMode: "worktree" })
+teams({ action: "member_shutdown", name: "alice", reason: "checkpoint reached" })
+teams({ action: "member_kill", name: "alice" })
+teams({ action: "member_prune", all: true })
 ```
 
-This spawns teammates as needed, creates tasks, assigns them, mutates dependencies/status/ownership, and sends team messages without slash commands. Options: `contextMode` ("fresh" or "branch"), `workspaceMode` ("shared" or "worktree").
+This spawns teammates as needed, creates tasks, assigns them, mutates dependencies/status/ownership, sends team messages, and handles teammate lifecycle actions without slash commands. Options: `contextMode` ("fresh" or "branch"), `workspaceMode` ("shared" or "worktree").
 
 For more control, use `/team spawn`:
 

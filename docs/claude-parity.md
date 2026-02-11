@@ -113,6 +113,7 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
    - Implemented: in-panel reassignment flow (`r`) with teammate picker.
    - Implemented: agent-invocable task mutations via `teams` tool (`task_assign`, `task_unassign`, `task_set_status`) so flows do not require manual panel interaction.
    - Implemented: agent-invocable dependency/messaging actions via `teams` tool (`task_dep_add|rm|ls`, `message_dm|broadcast|steer`).
+   - Implemented: agent-invocable lifecycle actions via `teams` tool (`member_spawn|shutdown|kill|prune`).
    - Next: optional tmux split-pane integration and deeper dependency/task editing flows in panel.
 
 12) **Join/attach flow** 🟡 (partial)
