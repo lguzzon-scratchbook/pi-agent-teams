@@ -106,9 +106,10 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
    - Still missing: richer gating UX (e.g. surfacing hook failures inline, controlling whether failures reopen tasks / block future work).
 
 11) **Better comrade interaction UX (within Pi constraints)** 🟡 (partial)
-   - Implemented: panel overview now shows selected teammate context (active/last completed task + last transcript event).
-   - Implemented: faster keyboard controls in panel (`w/s`, `1-9`, `m/d`).
-   - Next: deeper task-centric actions from panel and optional tmux split-pane integration.
+   - Implemented: panel overview shows selected teammate context (active/last completed task + last transcript event).
+   - Implemented: faster keyboard controls (`w/s`, `1-9`, `m/d`).
+   - Implemented: task-centric panel mode (`t`) with owned-task drilldown, dependency/block visibility, and quick jump back to transcript.
+   - Next: optional tmux split-pane integration and richer in-panel task mutations.
 
 12) **Join/attach flow** 🟡 (partial)
    - Implemented: `/team attach list`, `/team attach <teamId>`, `/team detach`.

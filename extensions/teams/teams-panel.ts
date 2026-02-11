@@ -52,7 +52,7 @@ interface Row {
 	isChairman: boolean;
 }
 
-type WidgetMode = "overview" | "session" | "dm";
+type WidgetMode = "overview" | "session" | "dm" | "tasks";
 
 // ── Transcript formatting ──
 
@@ -67,6 +67,26 @@ function summarizeTranscriptEntry(entry: TranscriptEntry | undefined): string | 
 	if (entry.kind === "tool_end") return `finished ${entry.toolName} (${(entry.durationMs / 1000).toFixed(1)}s)`;
 	const tok = formatTokens(entry.tokens);
 	return `turn ${String(entry.turnNumber)} complete (${tok} tokens)`;
+}
+
+function taskStatusRank(status: TeamTask["status"]): number {
+	if (status === "in_progress") return 0;
+	if (status === "pending") return 1;
+	return 2;
+}
+
+function parseTaskId(taskId: string): number {
+	const parsed = Number.parseInt(taskId, 10);
+	return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+}
+
+function unresolvedDependencies(task: TeamTask, taskById: ReadonlyMap<string, TeamTask>): string[] {
+	const unresolved: string[] = [];
+	for (const depId of task.blockedBy) {
+		const dep = taskById.get(depId);
+		if (!dep || dep.status !== "completed") unresolved.push(depId);
+	}
+	return unresolved;
 }
 
 function formatTranscriptEntry(entry: TranscriptEntry, theme: Theme, width: number): string[] {
@@ -145,10 +165,14 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 				let sessionName: string | null = null;
 				let dmTarget: string | null = null;
 				let dmBuffer = "";
+				let dmReturnMode: Exclude<WidgetMode, "dm"> = "overview";
 				let notification: { text: string; color: ThemeColor } | null = null;
 				let notificationTimer: ReturnType<typeof setTimeout> | null = null;
 				let sessionScrollOffset = 0;
 				let sessionAutoFollow = true;
+				let taskViewOwner: string | null = null;
+				let taskCursorIndex = 0;
+				let taskReturnMode: "overview" | "session" = "overview";
 
 				const refreshInterval = setInterval(() => tui.requestRender(), 1000);
 
@@ -159,6 +183,14 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 						notification = null;
 						tui.requestRender();
 					}, 3000);
+					tui.requestRender();
+				}
+
+				function openTaskView(ownerName: string, from: "overview" | "session") {
+					taskViewOwner = ownerName;
+					taskCursorIndex = 0;
+					taskReturnMode = from;
+					mode = "tasks";
 					tui.requestRender();
 				}
 
@@ -351,7 +383,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					// Hints
 					const hints = theme.fg(
 						"dim",
-						" \u2191\u2193/ws select \u00b7 1-9 jump \u00b7 enter view \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc close",
+						" \u2191\u2193/ws select \u00b7 1-9 jump \u00b7 enter view \u00b7 t tasks \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc close",
 					);
 					lines.push(truncateToWidth(hints, width));
 
@@ -461,9 +493,142 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					// Hints
 					lines.push(truncateToWidth(` ${sep}`, width));
 					lines.push(truncateToWidth(
-						theme.fg("dim", " \u2191\u2193/ws scroll \u00b7 g follow \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc back"),
+						theme.fg("dim", " \u2191\u2193/ws scroll \u00b7 g follow \u00b7 t tasks \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc back"),
 						width,
 					));
+
+					return lines;
+				}
+
+				// ── Task list render ──
+
+				function renderTasks(width: number): string[] {
+					if (!taskViewOwner) return renderOverview(width);
+
+					const ownerName = taskViewOwner;
+					const ownerLabel = formatMemberDisplayName(style, ownerName);
+					const allTasks = deps.getTasks();
+					const taskById = new Map<string, TeamTask>();
+					for (const task of allTasks) taskById.set(task.id, task);
+
+					const ownerTasks = allTasks
+						.filter((task) => task.owner === ownerName)
+						.sort((a, b) => {
+							const rank = taskStatusRank(a.status) - taskStatusRank(b.status);
+							if (rank !== 0) return rank;
+							return parseTaskId(a.id) - parseTaskId(b.id);
+						});
+
+					if (taskCursorIndex >= ownerTasks.length) taskCursorIndex = Math.max(0, ownerTasks.length - 1);
+
+					const pendingCount = ownerTasks.filter((t) => t.status === "pending").length;
+					const inProgressCount = ownerTasks.filter((t) => t.status === "in_progress").length;
+					const completedCount = ownerTasks.filter((t) => t.status === "completed").length;
+					const blockedCount = ownerTasks.filter((t) => t.status === "pending" && unresolvedDependencies(t, taskById).length > 0).length;
+
+					const lines: string[] = [];
+					const sep = theme.fg("dim", "─".repeat(Math.max(0, width - 2)));
+					const returnLabel = taskReturnMode === "session" ? "esc back to transcript" : "esc back";
+
+					lines.push(truncateToWidth(` ${theme.bold(theme.fg("accent", `Tasks · ${ownerLabel}`))}`, width));
+					lines.push(
+						truncateToWidth(
+							` ${theme.fg("dim", `${inProgressCount} in progress · ${pendingCount} pending · ${blockedCount} blocked · ${completedCount} done`)}`,
+							width,
+						),
+					);
+
+					if (ownerTasks.length === 0) {
+						lines.push(truncateToWidth(` ${theme.fg("dim", theme.italic("no tasks assigned"))}`, width));
+						if (notification) lines.push(truncateToWidth(` ${theme.fg(notification.color, notification.text)}`, width));
+						lines.push(truncateToWidth(` ${sep}`, width));
+						lines.push(
+							truncateToWidth(
+								theme.fg("dim", ` ${returnLabel} · m/d message · a abort · k kill · enter open transcript`),
+								width,
+							),
+						);
+						return lines;
+					}
+
+					const termHeight = process.stdout.rows || 24;
+					const notifLines = notification ? 1 : 0;
+					const detailLines = 4;
+					const chromeLines = 2 + detailLines + notifLines + 1 + 1;
+					const viewportHeight = Math.max(3, termHeight - chromeLines);
+
+					let start = 0;
+					if (ownerTasks.length > viewportHeight) {
+						const ideal = taskCursorIndex - Math.floor(viewportHeight / 2);
+						const maxStart = ownerTasks.length - viewportHeight;
+						start = Math.max(0, Math.min(maxStart, ideal));
+					}
+					const end = Math.min(ownerTasks.length, start + viewportHeight);
+
+					for (let idx = start; idx < end; idx++) {
+						const task = ownerTasks[idx];
+						if (!task) continue;
+						const unresolved = unresolvedDependencies(task, taskById);
+						const isBlocked = task.status === "pending" && unresolved.length > 0;
+						const statusLabel = isBlocked ? "blocked" : task.status;
+						const statusColor: ThemeColor = statusLabel === "in_progress"
+							? "warning"
+							: statusLabel === "completed"
+								? "success"
+								: statusLabel === "blocked"
+									? "error"
+									: "muted";
+						const selected = idx === taskCursorIndex;
+						const pointer = selected ? theme.fg("accent", "▸") : " ";
+						const subject = task.subject.length > 58 ? `${task.subject.slice(0, 57)}…` : task.subject;
+						const depTag = unresolved.length > 0 ? ` deps:${String(unresolved.length)}` : "";
+						const row = `${pointer}${theme.fg(statusColor, statusLabel.padEnd(11))} ${theme.fg("dim", `#${task.id}`)} ${subject}${theme.fg("dim", depTag)}`;
+						lines.push(truncateToWidth(row, width));
+					}
+
+					const selectedTask = ownerTasks[taskCursorIndex];
+					if (selectedTask) {
+						const unresolved = unresolvedDependencies(selectedTask, taskById);
+						const depSummary = selectedTask.blockedBy.length === 0
+							? "none"
+							: selectedTask.blockedBy
+								.map((depId) => {
+									const dep = taskById.get(depId);
+									if (!dep) return `#${depId}?`;
+									return dep.status === "completed" ? `#${depId}:done` : `#${depId}:open`;
+								})
+								.join(", ");
+						const blockSummary = selectedTask.blocks.length === 0
+							? "none"
+							: selectedTask.blocks.map((id) => `#${id}`).join(", ");
+						const desc = selectedTask.description.replace(/\s+/g, " ").trim();
+						const descPreview = desc.length > 90 ? `${desc.slice(0, 89)}…` : desc || "(no description)";
+
+						lines.push(truncateToWidth(` ${sep}`, width));
+						lines.push(
+							truncateToWidth(
+								` ${theme.fg("muted", "selected:")} ${theme.bold(`#${selectedTask.id} ${selectedTask.subject}`)}`,
+								width,
+							),
+						);
+						lines.push(
+							truncateToWidth(
+								` ${theme.fg("dim", "depends on:")} ${theme.fg(unresolved.length > 0 ? "error" : "muted", depSummary)}`,
+								width,
+							),
+						);
+						lines.push(truncateToWidth(` ${theme.fg("dim", "blocking:")} ${theme.fg("muted", blockSummary)}`, width));
+						lines.push(truncateToWidth(` ${theme.fg("dim", "desc:")} ${theme.fg("muted", descPreview)}`, width));
+					}
+
+					if (notification) lines.push(truncateToWidth(` ${theme.fg(notification.color, notification.text)}`, width));
+					lines.push(truncateToWidth(` ${sep}`, width));
+					lines.push(
+						truncateToWidth(
+							theme.fg("dim", ` ↑↓/ws select · enter open transcript · m/d message · a abort · k kill · ${returnLabel}`),
+							width,
+						),
+					);
 
 					return lines;
 				}
@@ -503,6 +668,8 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 								return renderSession(width);
 							case "dm":
 								return renderDm(width);
+							case "tasks":
+								return renderTasks(width);
 						}
 					},
 
@@ -510,7 +677,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 						// ── DM mode ──
 						if (mode === "dm") {
 							if (matchesKey(data, "escape")) {
-								mode = sessionName ? "session" : "overview";
+								mode = dmReturnMode;
 								dmBuffer = "";
 								dmTarget = null;
 								tui.requestRender();
@@ -523,7 +690,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 									void deps.sendMessage(target, msg);
 									showNotification(`Message sent to ${formatMemberDisplayName(style, target)}`);
 									dmBuffer = "";
-									mode = sessionName ? "session" : "overview";
+									mode = dmReturnMode;
 									dmTarget = null;
 								}
 								tui.requestRender();
@@ -537,6 +704,66 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 							// Regular character input
 							if (data.length === 1 && data.charCodeAt(0) >= 32) {
 								dmBuffer += data;
+								tui.requestRender();
+								return;
+							}
+							return;
+						}
+
+						// ── Tasks mode ──
+						if (mode === "tasks") {
+							if (matchesKey(data, "escape") || data === "t") {
+								mode = taskReturnMode;
+								taskViewOwner = null;
+								tui.requestRender();
+								return;
+							}
+							if (!taskViewOwner) {
+								mode = "overview";
+								tui.requestRender();
+								return;
+							}
+							if (matchesKey(data, "up") || data === "w") {
+								taskCursorIndex = Math.max(0, taskCursorIndex - 1);
+								tui.requestRender();
+								return;
+							}
+							if (matchesKey(data, "down") || data === "s") {
+								const ownedCount = deps.getTasks().filter((task) => task.owner === taskViewOwner).length;
+								taskCursorIndex = Math.min(Math.max(0, ownedCount - 1), taskCursorIndex + 1);
+								tui.requestRender();
+								return;
+							}
+							if (matchesKey(data, "enter") || data === "o") {
+								sessionName = taskViewOwner;
+								mode = "session";
+								sessionScrollOffset = 0;
+								sessionAutoFollow = true;
+								taskViewOwner = null;
+								tui.requestRender();
+								return;
+							}
+							if (data === "m" || data === "d") {
+								dmTarget = taskViewOwner;
+								dmReturnMode = "tasks";
+								mode = "dm";
+								dmBuffer = "";
+								tui.requestRender();
+								return;
+							}
+							if (data === "a") {
+								deps.abortMember(taskViewOwner);
+								showNotification(`${formatMemberDisplayName(style, taskViewOwner)} ${strings.abortRequestedVerb}`, "warning");
+								return;
+							}
+							if (data === "k") {
+								const target = taskViewOwner;
+								deps.killMember(target);
+								showNotification(`${formatMemberDisplayName(style, target)} ${strings.killedVerb} (SIGTERM)`, "warning");
+								if (sessionName === target) {
+									sessionName = null;
+									taskReturnMode = "overview";
+								}
 								tui.requestRender();
 								return;
 							}
@@ -585,8 +812,13 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 								tui.requestRender();
 								return;
 							}
+							if (data === "t" && sessionName) {
+								openTaskView(sessionName, "session");
+								return;
+							}
 							if (data === "m" || data === "d") {
 								dmTarget = sessionName;
+								dmReturnMode = "session";
 								mode = "dm";
 								dmBuffer = "";
 								tui.requestRender();
@@ -642,6 +874,11 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 							}
 							return;
 						}
+						if (data === "t") {
+							const name = memberNames[cursorIndex];
+							if (name) openTaskView(name, "overview");
+							return;
+						}
 						if (matchesKey(data, "enter")) {
 							const name = memberNames[cursorIndex];
 							if (name) {
@@ -657,6 +894,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 							const name = memberNames[cursorIndex];
 							if (name) {
 								dmTarget = name;
+								dmReturnMode = "overview";
 								mode = "dm";
 								dmBuffer = "";
 								tui.requestRender();

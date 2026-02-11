@@ -176,6 +176,7 @@ All management commands live under `/team`.
 - `↑/↓` or `w/s`: select teammate / scroll transcript
 - `1..9`: jump directly to teammate in overview
 - `enter`: open selected teammate transcript
+- `t`: open selected teammate task list (task-centric view with deps/blocks)
 - `m` or `d`: compose message to selected teammate
 - `a`: request abort
 - `k`: kill (SIGTERM)

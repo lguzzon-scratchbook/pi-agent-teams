@@ -575,6 +575,7 @@ console.log("\n11. docs/help drift guard");
 		assert(readme.includes("/team style list"), "README mentions /team style list");
 		assert(readme.includes("/team attach <teamId>"), "README mentions /team attach");
 		assert(readme.includes("/team detach"), "README mentions /team detach");
+		assert(readme.includes("task-centric view"), "README mentions panel task-centric view");
 		assert(readme.includes("_styles"), "README mentions _styles directory");
 	}
 }
