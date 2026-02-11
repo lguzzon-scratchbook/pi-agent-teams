@@ -13,7 +13,7 @@ export interface SpawnTeammateOptions {
 	 * Optional model override for the spawned teammate.
 	 *
 	 * Supported forms:
-	 * - "<provider>/<modelId>"  (e.g. "anthropic/claude-sonnet-4")
+	 * - "<provider>/<modelId>"  (e.g. "openai-codex/gpt-5.1-codex-mini")
 	 * - "<modelId>"             (provider inherited from leader when available)
 	 */
 	model?: string;

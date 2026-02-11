@@ -15,6 +15,7 @@ import { ensureWorktreeCwd } from "./worktree.js";
 import { ActivityTracker, TranscriptTracker } from "./activity-tracker.js";
 import { openInteractiveWidget } from "./teams-panel.js";
 import { createTeamsWidget } from "./teams-widget.js";
+import { isDeprecatedTeammateModelId } from "./model-policy.js";
 import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 import { pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
 import {
@@ -234,13 +235,15 @@ export function runLeader(pi: ExtensionAPI): void {
 
 				const ok = res.exitCode === 0 && !res.timedOut && !res.error;
 				const hookName = getHookBaseName(invocation.event);
-				const failureAction = getTeamsHookFailureAction(process.env);
+				const cfgForInvocation = await loadTeamConfig(invocation.teamDir);
+				const hookPolicy = cfgForInvocation?.hooks;
+				const failureAction = getTeamsHookFailureAction(process.env, hookPolicy?.failureAction);
 				const shouldFollowup = shouldCreateHookFollowupTask(failureAction);
 				const shouldReopen = shouldReopenTaskOnHookFailure(failureAction);
-				const maxReopens = getTeamsHookMaxReopensPerTask(process.env);
-				const followupOwnerPolicy = getTeamsHookFollowupOwnerPolicy(process.env);
+				const maxReopens = getTeamsHookMaxReopensPerTask(process.env, hookPolicy?.maxReopensPerTask);
+				const followupOwnerPolicy = getTeamsHookFollowupOwnerPolicy(process.env, hookPolicy?.followupOwner);
 				const task = invocation.completedTask;
-				const leadName = teamConfig?.leadName ?? "team-lead";
+				const leadName = cfgForInvocation?.leadName ?? teamConfig?.leadName ?? "team-lead";
 
 				const stderrFirstLine = res.stderr
 					.split(/\r?\n/)
@@ -465,9 +468,21 @@ export function runLeader(pi: ExtensionAPI): void {
 						error: `Invalid model override '${modelOverrideRaw}'. Expected <provider>/<modelId>.`,
 					};
 				}
+				if (isDeprecatedTeammateModelId(id)) {
+					return {
+						ok: false,
+						error: `Model override '${modelOverrideRaw}' is deprecated. Choose a current model id.`,
+					};
+				}
 				childProvider = provider;
 				childModelId = id;
 			} else {
+				if (isDeprecatedTeammateModelId(modelOverrideRaw)) {
+					return {
+						ok: false,
+						error: `Model override '${modelOverrideRaw}' is deprecated. Choose a current model id.`,
+					};
+				}
 				childModelId = modelOverrideRaw;
 				childProvider = ctx.model?.provider;
 				if (!childProvider) {
@@ -477,7 +492,7 @@ export function runLeader(pi: ExtensionAPI): void {
 					);
 				}
 			}
-		} else if (ctx.model) {
+		} else if (ctx.model && !isDeprecatedTeammateModelId(ctx.model.id)) {
 			childProvider = ctx.model.provider;
 			childModelId = ctx.model.id;
 		}

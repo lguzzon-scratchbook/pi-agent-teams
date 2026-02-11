@@ -57,11 +57,16 @@ export function areTeamsHooksEnabled(env: NodeJS.ProcessEnv = process.env): bool
 export type TeamsHookFailureAction = "warn" | "followup" | "reopen" | "reopen_followup";
 export type TeamsHookFollowupOwnerPolicy = "member" | "lead" | "none";
 
-function isTeamsHookFailureAction(value: string): value is TeamsHookFailureAction {
+export function isTeamsHookFailureAction(value: string): value is TeamsHookFailureAction {
 	return value === "warn" || value === "followup" || value === "reopen" || value === "reopen_followup";
 }
 
-export function getTeamsHookFailureAction(env: NodeJS.ProcessEnv = process.env): TeamsHookFailureAction {
+export function getTeamsHookFailureAction(
+	env: NodeJS.ProcessEnv = process.env,
+	override?: string,
+): TeamsHookFailureAction {
+	const explicit = override?.trim().toLowerCase();
+	if (explicit && isTeamsHookFailureAction(explicit)) return explicit;
 	const raw = env.PI_TEAMS_HOOKS_FAILURE_ACTION?.trim().toLowerCase();
 	if (raw && isTeamsHookFailureAction(raw)) return raw;
 	if (env.PI_TEAMS_HOOKS_CREATE_TASK_ON_FAILURE === "1") return "followup";
@@ -76,13 +81,18 @@ export function shouldReopenTaskOnHookFailure(action: TeamsHookFailureAction): b
 	return action === "reopen" || action === "reopen_followup";
 }
 
-function isHookFollowupOwnerPolicy(value: string): value is TeamsHookFollowupOwnerPolicy {
+export function isTeamsHookFollowupOwnerPolicy(value: string): value is TeamsHookFollowupOwnerPolicy {
 	return value === "member" || value === "lead" || value === "none";
 }
 
-export function getTeamsHookFollowupOwnerPolicy(env: NodeJS.ProcessEnv = process.env): TeamsHookFollowupOwnerPolicy {
+export function getTeamsHookFollowupOwnerPolicy(
+	env: NodeJS.ProcessEnv = process.env,
+	override?: string,
+): TeamsHookFollowupOwnerPolicy {
+	const explicit = override?.trim().toLowerCase();
+	if (explicit && isTeamsHookFollowupOwnerPolicy(explicit)) return explicit;
 	const raw = env.PI_TEAMS_HOOKS_FOLLOWUP_OWNER?.trim().toLowerCase();
-	if (raw && isHookFollowupOwnerPolicy(raw)) return raw;
+	if (raw && isTeamsHookFollowupOwnerPolicy(raw)) return raw;
 	return "member";
 }
 
@@ -102,7 +112,8 @@ export function resolveTeamsHookFollowupOwner(opts: {
 	return lead ? lead : undefined;
 }
 
-export function getTeamsHookMaxReopensPerTask(env: NodeJS.ProcessEnv = process.env): number {
+export function getTeamsHookMaxReopensPerTask(env: NodeJS.ProcessEnv = process.env, override?: number): number {
+	if (typeof override === "number" && Number.isFinite(override) && override >= 0) return Math.floor(override);
 	const raw = env.PI_TEAMS_HOOKS_MAX_REOPENS_PER_TASK?.trim();
 	if (!raw) return 3;
 	const parsed = Number.parseInt(raw, 10);

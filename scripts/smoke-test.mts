@@ -29,8 +29,9 @@ import {
 	removeTaskDependency,
 	isTaskBlocked,
 } from "../extensions/teams/task-store.js";
-import { ensureTeamConfig, loadTeamConfig, upsertMember, setMemberStatus } from "../extensions/teams/team-config.js";
+import { ensureTeamConfig, loadTeamConfig, upsertMember, setMemberStatus, updateTeamHooksPolicy } from "../extensions/teams/team-config.js";
 import { sanitizeName } from "../extensions/teams/names.js";
+import { isDeprecatedTeammateModelId } from "../extensions/teams/model-policy.js";
 import { getTeamsNamingRules, getTeamsStrings } from "../extensions/teams/teams-style.js";
 import {
 	getTeamsHookFailureAction,
@@ -104,6 +105,12 @@ assertEq(sanitizeName("Hello World!"), "Hello-World-", "non-alnum → hyphens");
 assertEq(sanitizeName("agent_1"), "agent_1", "underscores kept");
 assertEq(sanitizeName(""), "", "empty stays empty");
 assertEq(sanitizeName("UPPER"), "UPPER", "case preserved");
+
+// ── 1b. model policy ────────────────────────────────────────────────
+console.log("\n1b. model-policy");
+assert(isDeprecatedTeammateModelId("claude-sonnet-4"), "marks sonnet-4 as deprecated");
+assert(!isDeprecatedTeammateModelId("claude-sonnet-4-5"), "does not block newer sonnet variants");
+assert(!isDeprecatedTeammateModelId("gpt-5.1-codex-mini"), "keeps current models allowed");
 
 // ── 2. fs-lock ───────────────────────────────────────────────────────
 console.log("\n2. fs-lock.withLock");
@@ -325,6 +332,21 @@ console.log("\n5. team-config");
 	const loaded = await loadTeamConfig(teamDir);
 	assert(loaded !== null, "loadTeamConfig returns config");
 	assertEq(loaded?.teamId, "smoke-team", "loadTeamConfig correct teamId");
+
+	// updateTeamHooksPolicy
+	const withHooks = await updateTeamHooksPolicy(teamDir, () => ({
+		failureAction: "reopen_followup",
+		maxReopensPerTask: 2,
+		followupOwner: "member",
+	}));
+	assert(withHooks !== null, "updateTeamHooksPolicy returns config");
+	assertEq(withHooks?.hooks?.failureAction, "reopen_followup", "updateTeamHooksPolicy sets failure action");
+	assertEq(withHooks?.hooks?.maxReopensPerTask, 2, "updateTeamHooksPolicy sets max reopens");
+	assertEq(withHooks?.hooks?.followupOwner, "member", "updateTeamHooksPolicy sets followup owner");
+
+	const clearedHooks = await updateTeamHooksPolicy(teamDir, () => undefined);
+	assert(clearedHooks !== null, "updateTeamHooksPolicy can clear policy");
+	assertEq(clearedHooks?.hooks, undefined, "updateTeamHooksPolicy clears hooks policy");
 }
 
 // ── 6. protocol parsers ──────────────────────────────────────────────
@@ -667,9 +689,12 @@ console.log("\n11. docs/help drift guard");
 		assert(readme.includes("\"action\": \"message_broadcast\""), "README mentions teams tool message_broadcast action");
 		assert(readme.includes("\"action\": \"member_kill\""), "README mentions teams tool member_kill action");
 		assert(readme.includes("\"action\": \"plan_approve\""), "README mentions teams tool plan_approve action");
+		assert(readme.includes("\"action\": \"hooks_policy_get\""), "README mentions teams tool hooks_policy_get action");
+		assert(readme.includes("\"action\": \"hooks_policy_set\""), "README mentions teams tool hooks_policy_set action");
 		assert(readme.includes("PI_TEAMS_HOOKS_FAILURE_ACTION"), "README mentions hook failure action policy");
 		assert(readme.includes("PI_TEAMS_HOOKS_MAX_REOPENS_PER_TASK"), "README mentions hook reopen cap policy");
 		assert(readme.includes("PI_TEAMS_HOOK_CONTEXT_JSON"), "README mentions hook context json contract");
+		assert(!readme.includes("claude-sonnet-4"), "README avoids deprecated leader model examples");
 		assert(readme.includes("task-centric view"), "README mentions panel task-centric view");
 		assert(readme.includes("`t` or `shift+t`"), "README mentions panel task toggle key");
 		assert(readme.includes("task view: `c` complete"), "README mentions panel task mutations");

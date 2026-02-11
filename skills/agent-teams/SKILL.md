@@ -47,6 +47,8 @@ Use the **`teams` tool** (LLM-callable) for delegation, task/messaging mutations
 | `member_kill` | `name` | Force-stop RPC teammate. |
 | `member_prune` | _(none)_ | Mark stale workers offline (`all=true` to force). |
 | `plan_approve` / `plan_reject` | `name` | Resolve pending plan approvals (`feedback` optional for reject). |
+| `hooks_policy_get` | _(none)_ | Read team hooks policy (configured + effective). |
+| `hooks_policy_set` | one or more: `hookFailureAction`, `hookMaxReopensPerTask`, `hookFollowupOwner` | Update team hooks policy at runtime (`hooksPolicyReset=true` clears team overrides first). |
 
 Examples:
 
@@ -57,6 +59,8 @@ teams({ action: "task_dep_add", taskId: "12", depId: "7" })
 teams({ action: "message_broadcast", message: "Sync: finishing this milestone" })
 teams({ action: "member_kill", name: "alice" })
 teams({ action: "plan_reject", name: "alice", feedback: "Include rollback strategy" })
+teams({ action: "hooks_policy_get" })
+teams({ action: "hooks_policy_set", hookFailureAction: "reopen_followup", hookMaxReopensPerTask: 2, hookFollowupOwner: "member" })
 ```
 
 This covers most day-to-day orchestration without slash commands. For nuanced/manual control, use `/team ...` commands directly.

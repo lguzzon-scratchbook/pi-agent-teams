@@ -7,8 +7,15 @@ import { writeToMailbox } from "./mailbox.js";
 import { pickAgentNames, pickNamesFromPool, sanitizeName } from "./names.js";
 import { getTeamDir } from "./paths.js";
 import { TEAM_MAILBOX_NS, taskAssignmentPayload } from "./protocol.js";
-import { ensureTeamConfig, setMemberStatus } from "./team-config.js";
+import { ensureTeamConfig, setMemberStatus, updateTeamHooksPolicy } from "./team-config.js";
 import { getTeamsNamingRules, getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
+import {
+	getTeamsHookFailureAction,
+	getTeamsHookFollowupOwnerPolicy,
+	getTeamsHookMaxReopensPerTask,
+	type TeamsHookFailureAction,
+	type TeamsHookFollowupOwnerPolicy,
+} from "./hooks.js";
 import {
 	addTaskDependency,
 	createTask,
@@ -42,6 +49,8 @@ const TeamsActionSchema = StringEnum(
 		"member_prune",
 		"plan_approve",
 		"plan_reject",
+		"hooks_policy_get",
+		"hooks_policy_set",
 	] as const,
 	{
 		description: "Teams tool action.",
@@ -66,6 +75,14 @@ const TeamsWorkspaceModeSchema = StringEnum(["shared", "worktree"] as const, {
 const TeamsThinkingLevelSchema = StringEnum(["off", "minimal", "low", "medium", "high", "xhigh"] as const, {
 	description:
 		"Thinking level to use for spawned comrades (defaults to the leader's current thinking level when omitted).",
+});
+
+const TeamsHookFailureActionSchema = StringEnum(["warn", "followup", "reopen", "reopen_followup"] as const, {
+	description: "Hook failure policy for hooks_policy_set.",
+});
+
+const TeamsHookFollowupOwnerSchema = StringEnum(["member", "lead", "none"] as const, {
+	description: "Follow-up owner policy for hooks_policy_set.",
 });
 
 const TeamsDelegateTaskSchema = Type.Object({
@@ -104,10 +121,16 @@ const TeamsToolParamsSchema = Type.Object({
 	model: Type.Optional(
 		Type.String({
 			description:
-				"Optional model override for spawned comrades. Use '<provider>/<modelId>' (e.g. 'anthropic/claude-sonnet-4'). If you pass only '<modelId>', the provider is inherited from the leader when available.",
+				"Optional model override for spawned comrades. Use '<provider>/<modelId>'. If you pass only '<modelId>', the provider is inherited from the leader when available.",
 		}),
 	),
 	thinking: Type.Optional(TeamsThinkingLevelSchema),
+	hookFailureAction: Type.Optional(TeamsHookFailureActionSchema),
+	hookMaxReopensPerTask: Type.Optional(
+		Type.Integer({ minimum: 0, description: "Per-task auto-reopen cap for hooks_policy_set (0 disables auto-reopen)." }),
+	),
+	hookFollowupOwner: Type.Optional(TeamsHookFollowupOwnerSchema),
+	hooksPolicyReset: Type.Optional(Type.Boolean({ description: "For hooks_policy_set, clear team-level overrides before applying fields." })),
 });
 
 type TeamsToolParamsType = Static<typeof TeamsToolParamsSchema>;
@@ -129,7 +152,7 @@ export function registerTeamsTool(opts: {
 		label: "Teams",
 		description: [
 			"Spawn comrade agents and delegate tasks. Each comrade is a child Pi process that executes work autonomously and reports back.",
-			"You can also mutate existing tasks (assign, unassign, set status, dependencies), send team messages, and run teammate lifecycle actions without user slash commands.",
+			"You can also mutate existing tasks (assign, unassign, set status, dependencies), send team messages, run teammate lifecycle actions, and manage hooks remediation policy without user slash commands.",
 			"Provide a list of tasks with optional assignees; comrades are spawned automatically and assigned round-robin if unspecified.",
 			"Options: contextMode=branch (clone session context), workspaceMode=worktree (git worktree isolation).",
 			"Optional overrides: model='<provider>/<modelId>' and thinking (off|minimal|low|medium|high|xhigh).",
@@ -670,6 +693,111 @@ export function registerTeamsTool(opts: {
 				return {
 					content: [{ type: "text", text: `Rejected plan for ${formatMemberDisplayName(style, name)}: ${feedback}` }],
 					details: { action, teamId, name, requestId: pending.requestId, taskId: pending.taskId, feedback },
+				};
+			}
+
+			if (action === "hooks_policy_get") {
+				const configuredFailureAction: TeamsHookFailureAction | undefined = cfg.hooks?.failureAction;
+				const configuredFollowupOwner: TeamsHookFollowupOwnerPolicy | undefined = cfg.hooks?.followupOwner;
+				const configuredMaxReopens = cfg.hooks?.maxReopensPerTask;
+
+				const effectiveFailureAction = getTeamsHookFailureAction(process.env, configuredFailureAction);
+				const effectiveFollowupOwner = getTeamsHookFollowupOwnerPolicy(process.env, configuredFollowupOwner);
+				const effectiveMaxReopens = getTeamsHookMaxReopensPerTask(process.env, configuredMaxReopens);
+
+				const lines = [
+					"Hooks policy",
+					`configured: failureAction=${configuredFailureAction ?? "(env default)"}, maxReopensPerTask=${configuredMaxReopens ?? "(env default)"}, followupOwner=${configuredFollowupOwner ?? "(env default)"}`,
+					`effective: failureAction=${effectiveFailureAction}, maxReopensPerTask=${String(effectiveMaxReopens)}, followupOwner=${effectiveFollowupOwner}`,
+				];
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: {
+						action,
+						teamId,
+						configured: {
+							failureAction: configuredFailureAction,
+							maxReopensPerTask: configuredMaxReopens,
+							followupOwner: configuredFollowupOwner,
+						},
+						effective: {
+							failureAction: effectiveFailureAction,
+							maxReopensPerTask: effectiveMaxReopens,
+							followupOwner: effectiveFollowupOwner,
+						},
+					},
+				};
+			}
+
+			if (action === "hooks_policy_set") {
+				const reset = params.hooksPolicyReset === true;
+				const nextFailureAction = params.hookFailureAction;
+				const nextMaxReopens = params.hookMaxReopensPerTask;
+				const nextFollowupOwner = params.hookFollowupOwner;
+				if (!reset && nextFailureAction === undefined && nextMaxReopens === undefined && nextFollowupOwner === undefined) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: "hooks_policy_set requires at least one policy field (or hooksPolicyReset=true)",
+							},
+						],
+						details: { action, reset },
+					};
+				}
+
+				const updatedCfg = await updateTeamHooksPolicy(teamDir, (current) => {
+					const next = reset ? {} : { ...current };
+					if (nextFailureAction !== undefined) next.failureAction = nextFailureAction;
+					if (nextMaxReopens !== undefined) next.maxReopensPerTask = nextMaxReopens;
+					if (nextFollowupOwner !== undefined) next.followupOwner = nextFollowupOwner;
+					if (
+						next.failureAction === undefined &&
+						next.maxReopensPerTask === undefined &&
+						next.followupOwner === undefined
+					) {
+						return undefined;
+					}
+					return next;
+				});
+				if (!updatedCfg) {
+					return {
+						content: [{ type: "text", text: "Failed to update hooks policy: team config missing" }],
+						details: { action, teamId },
+					};
+				}
+
+				await refreshUi();
+				const configuredFailureAction: TeamsHookFailureAction | undefined = updatedCfg.hooks?.failureAction;
+				const configuredFollowupOwner: TeamsHookFollowupOwnerPolicy | undefined = updatedCfg.hooks?.followupOwner;
+				const configuredMaxReopens = updatedCfg.hooks?.maxReopensPerTask;
+				const effectiveFailureAction = getTeamsHookFailureAction(process.env, configuredFailureAction);
+				const effectiveFollowupOwner = getTeamsHookFollowupOwnerPolicy(process.env, configuredFollowupOwner);
+				const effectiveMaxReopens = getTeamsHookMaxReopensPerTask(process.env, configuredMaxReopens);
+				const lines = [
+					"Updated hooks policy",
+					`configured: failureAction=${configuredFailureAction ?? "(env default)"}, maxReopensPerTask=${configuredMaxReopens ?? "(env default)"}, followupOwner=${configuredFollowupOwner ?? "(env default)"}`,
+					`effective: failureAction=${effectiveFailureAction}, maxReopensPerTask=${String(effectiveMaxReopens)}, followupOwner=${effectiveFollowupOwner}`,
+				];
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: {
+						action,
+						teamId,
+						reset,
+						configured: {
+							failureAction: configuredFailureAction,
+							maxReopensPerTask: configuredMaxReopens,
+							followupOwner: configuredFollowupOwner,
+						},
+						effective: {
+							failureAction: effectiveFailureAction,
+							maxReopensPerTask: effectiveMaxReopens,
+							followupOwner: effectiveFollowupOwner,
+						},
+					},
 				};
 			}
 

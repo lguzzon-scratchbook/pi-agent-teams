@@ -19,6 +19,15 @@ export interface TeamMember {
 	meta?: Record<string, unknown>;
 }
 
+export type TeamHooksFailureAction = "warn" | "followup" | "reopen" | "reopen_followup";
+export type TeamHooksFollowupOwnerPolicy = "member" | "lead" | "none";
+
+export interface TeamHooksPolicy {
+	failureAction?: TeamHooksFailureAction;
+	maxReopensPerTask?: number;
+	followupOwner?: TeamHooksFollowupOwnerPolicy;
+}
+
 export interface TeamConfig {
 	version: 1;
 	teamId: string;
@@ -28,6 +37,8 @@ export interface TeamConfig {
 	leadName: string;
 	/** Optional UI/UX style. If omitted, treat as "normal". */
 	style?: TeamsStyle;
+	/** Optional per-team hooks policy override (env remains fallback). */
+	hooks?: TeamHooksPolicy;
 	createdAt: string;
 	updatedAt: string;
 	members: TeamMember[];
@@ -47,6 +58,28 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function coerceStyle(v: unknown): TeamsStyle | undefined {
 	return normalizeTeamsStyleId(v) ?? undefined;
+}
+
+function isTeamHooksFailureAction(v: unknown): v is TeamHooksFailureAction {
+	return v === "warn" || v === "followup" || v === "reopen" || v === "reopen_followup";
+}
+
+function isTeamHooksFollowupOwnerPolicy(v: unknown): v is TeamHooksFollowupOwnerPolicy {
+	return v === "member" || v === "lead" || v === "none";
+}
+
+function coerceNonNegativeInt(v: unknown): number | undefined {
+	if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return undefined;
+	return Math.floor(v);
+}
+
+function coerceHooksPolicy(v: unknown): TeamHooksPolicy | undefined {
+	if (!isRecord(v)) return undefined;
+	const failureAction = isTeamHooksFailureAction(v.failureAction) ? v.failureAction : undefined;
+	const maxReopensPerTask = coerceNonNegativeInt(v.maxReopensPerTask);
+	const followupOwner = isTeamHooksFollowupOwnerPolicy(v.followupOwner) ? v.followupOwner : undefined;
+	if (!failureAction && maxReopensPerTask === undefined && !followupOwner) return undefined;
+	return { failureAction, maxReopensPerTask, followupOwner };
 }
 
 async function readJson(file: string): Promise<unknown | null> {
@@ -96,6 +129,7 @@ function coerceConfig(obj: unknown): TeamConfig | null {
 	if (!Array.isArray(obj.members)) return null;
 
 	const style = coerceStyle(obj.style);
+	const hooks = coerceHooksPolicy(obj.hooks);
 	const members = obj.members.map(coerceMember).filter((m): m is TeamMember => m !== null);
 	return {
 		version: 1,
@@ -103,6 +137,7 @@ function coerceConfig(obj: unknown): TeamConfig | null {
 		taskListId: obj.taskListId,
 		leadName: sanitizeName(obj.leadName),
 		style,
+		hooks,
 		createdAt: obj.createdAt,
 		updatedAt: obj.updatedAt,
 		members,
@@ -175,6 +210,31 @@ export async function setTeamStyle(teamDir: string, style: TeamsStyle): Promise<
 			return updated;
 		},
 		{ label: `team-config:style:${style}` },
+	);
+}
+
+export async function updateTeamHooksPolicy(
+	teamDir: string,
+	updater: (current: TeamHooksPolicy) => TeamHooksPolicy | undefined,
+): Promise<TeamConfig | null> {
+	const file = getTeamConfigPath(teamDir);
+	const lock = `${file}.lock`;
+
+	await ensureDir(teamDir);
+
+	return await withLock(
+		lock,
+		async () => {
+			const existing = coerceConfig(await readJson(file));
+			if (!existing) return null;
+
+			const nextHooks = coerceHooksPolicy(updater(existing.hooks ?? {}));
+			const now = new Date().toISOString();
+			const updated: TeamConfig = { ...existing, hooks: nextHooks, updatedAt: now };
+			await writeJsonAtomic(file, updated);
+			return updated;
+		},
+		{ label: "team-config:hooks-policy" },
 	);
 }
 

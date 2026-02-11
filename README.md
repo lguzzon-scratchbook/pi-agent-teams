@@ -122,7 +122,7 @@ Or let the model drive it with the delegate tool:
   "action": "delegate",
   "contextMode": "branch",
   "workspaceMode": "worktree",
-  "model": "anthropic/claude-sonnet-4",
+  "model": "openai-codex/gpt-5.1-codex-mini",
   "thinking": "high",
   "teammates": ["alice", "bob"],
   "tasks": [
@@ -152,6 +152,8 @@ Or let the model drive it with the delegate tool:
 | `member_prune` | _(none)_ | Mark stale non-RPC workers offline (`all=true` to force). |
 | `plan_approve` | `name` | Approve pending plan for a plan-required teammate. |
 | `plan_reject` | `name` | Reject pending plan (`feedback` optional). |
+| `hooks_policy_get` | _(none)_ | Read team hooks policy (configured + effective with env fallback). |
+| `hooks_policy_set` | one or more of: `hookFailureAction`, `hookMaxReopensPerTask`, `hookFollowupOwner` | Update team hooks policy at runtime (`hooksPolicyReset=true` clears team overrides first). |
 
 Example calls:
 
@@ -161,6 +163,8 @@ Example calls:
 { "action": "message_broadcast", "message": "Sync: finishing this milestone" }
 { "action": "member_kill", "name": "alice" }
 { "action": "plan_approve", "name": "alice" }
+{ "action": "hooks_policy_get" }
+{ "action": "hooks_policy_set", "hookFailureAction": "reopen_followup", "hookMaxReopensPerTask": 2, "hookFollowupOwner": "member" }
 ```
 
 ## Commands
@@ -201,6 +205,11 @@ All management commands live under `/team`.
 | `/team cleanup [--force]` | Delete team artifacts |
 | `/team id` | Print team/task-list IDs and paths |
 | `/team env <name>` | Print env vars to start a manual teammate |
+
+Model inheritance note:
+
+- If the leader is running a deprecated model id (e.g. Sonnet 4 variants), teammates will **not** inherit that id by default.
+- Explicit deprecated `--model` overrides are rejected.
 
 ### Panel shortcuts (`/tw` / `/team panel`)
 
@@ -290,6 +299,13 @@ Hooks run with working directory = the **leader session cwd** and receive contex
 - `PI_TEAMS_STYLE`
 - `PI_TEAMS_MEMBER`
 - `PI_TEAMS_TASK_ID`, `PI_TEAMS_TASK_SUBJECT`, `PI_TEAMS_TASK_OWNER`, `PI_TEAMS_TASK_STATUS`
+
+Hook policy can be controlled by agents at runtime via `teams` tool actions:
+
+- `{ "action": "hooks_policy_get" }`
+- `{ "action": "hooks_policy_set", ... }`
+
+Team-level policy in `config.json` overrides env defaults for that team.
 
 Hook failure policy (for `task_completed` / `task_failed` hooks):
 
