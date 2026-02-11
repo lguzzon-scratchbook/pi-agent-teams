@@ -368,6 +368,18 @@ node scripts/e2e-rpc-test.mjs
 
 Starts a leader in RPC mode, spawns a teammate, runs a shutdown handshake, verifies cleanup. Sets `PI_TEAMS_ROOT_DIR` to a temp directory so nothing touches `~/.pi/agent/teams`.
 
+### Integration: hooks remediation loop
+
+```bash
+npm run integration-hooks-remediation-test
+```
+
+Deterministic leader-side integration flow that verifies failed `on_task_completed` hook handling end-to-end:
+
+- task is reopened when policy includes `reopen`
+- follow-up task is created/assigned when policy includes `followup`
+- remediation mailbox nudge is emitted for the responsible teammate
+
 ### tmux dogfooding
 
 ```bash

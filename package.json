@@ -33,6 +33,7 @@
     "smoke-test": "tsx scripts/smoke-test.mts",
     "integration-claim-test": "tsx scripts/integration-claim-test.mts",
     "integration-spawn-overrides-test": "tsx scripts/integration-spawn-overrides-test.mts",
+    "integration-hooks-remediation-test": "tsx scripts/integration-hooks-remediation-test.mts",
     "integration-todo-test": "tsx scripts/integration-todo-test.mts"
   },
   "devDependencies": {

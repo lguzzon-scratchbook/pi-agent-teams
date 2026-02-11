@@ -109,6 +109,7 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
    - Implemented: runtime team-level policy overrides (via `teams` tool: `hooks_policy_get` / `hooks_policy_set`) layered over env defaults.
    - Implemented: standardized hook context contract (`PI_TEAMS_HOOK_CONTEXT_VERSION=1`, `PI_TEAMS_HOOK_CONTEXT_JSON`).
    - Implemented: autonomous remediation helpers (auto-reopen cap, follow-up owner policy, teammate remediation notification).
+   - Implemented: deterministic integration coverage (`scripts/integration-hooks-remediation-test.mts`) for failed hook -> reopen/follow-up/nudge flow.
    - Still missing: broader contract versioning story + richer policy visualization UX.
 
 11) **Better comrade interaction UX (within Pi constraints)** 🟡 (partial)
