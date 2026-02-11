@@ -6,7 +6,7 @@ import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { writeToMailbox } from "./mailbox.js";
 import { sanitizeName } from "./names.js";
 import { TEAM_MAILBOX_NS } from "./protocol.js";
-import { createTask, listTasks, unassignTasksForAgent, type TeamTask } from "./task-store.js";
+import { createTask, listTasks, unassignTasksForAgent, updateTask, type TeamTask } from "./task-store.js";
 import { TeammateRpc } from "./teammate-rpc.js";
 import { ensureTeamConfig, loadTeamConfig, setMemberStatus, upsertMember, type TeamConfig } from "./team-config.js";
 import { getTeamDir } from "./paths.js";
@@ -648,6 +648,33 @@ export function runLeader(pi: ExtensionAPI): void {
 				void unassignTasksForAgent(teamDir, effectiveTlId, name, `${displayName} ${strings.killedVerb}`);
 				void setMemberStatus(teamDir, name, "offline", { meta: { killedAt: new Date().toISOString() } });
 				void refreshTasks();
+			},
+			async setTaskStatus(taskId: string, status: TeamTask["status"]) {
+				const updated = await updateTask(teamDir, effectiveTlId, taskId, (cur) => {
+					if (cur.status === status) return cur;
+					const metadata = { ...(cur.metadata ?? {}) };
+					if (status === "completed") metadata.completedAt = new Date().toISOString();
+					if (status !== "completed" && cur.status === "completed") metadata.reopenedAt = new Date().toISOString();
+					return { ...cur, status, metadata };
+				});
+				if (!updated) return false;
+				await refreshTasks();
+				renderWidget();
+				return true;
+			},
+			async unassignTask(taskId: string) {
+				const updated = await updateTask(teamDir, effectiveTlId, taskId, (cur) => {
+					if (!cur.owner) return cur;
+					if (cur.status === "completed") return { ...cur, owner: undefined };
+					const metadata = { ...(cur.metadata ?? {}) };
+					metadata.unassignedAt = new Date().toISOString();
+					metadata.unassignedReason = "leader-panel";
+					return { ...cur, owner: undefined, status: "pending", metadata };
+				});
+				if (!updated) return false;
+				await refreshTasks();
+				renderWidget();
+				return true;
 			},
 			suppressWidget() {
 				widgetSuppressed = true;

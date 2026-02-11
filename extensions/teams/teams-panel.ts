@@ -28,6 +28,8 @@ export interface InteractiveWidgetDeps {
 	sendMessage(name: string, message: string): Promise<void>;
 	abortMember(name: string): void;
 	killMember(name: string): void;
+	setTaskStatus(taskId: string, status: TeamTask["status"]): Promise<boolean>;
+	unassignTask(taskId: string): Promise<boolean>;
 	suppressWidget(): void;
 	restoreWidget(): void;
 }
@@ -192,6 +194,25 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					taskReturnMode = from;
 					mode = "tasks";
 					tui.requestRender();
+				}
+
+				function getOwnedTasks(ownerName: string): TeamTask[] {
+					return deps
+						.getTasks()
+						.filter((task) => task.owner === ownerName)
+						.sort((a, b) => {
+							const rank = taskStatusRank(a.status) - taskStatusRank(b.status);
+							if (rank !== 0) return rank;
+							return parseTaskId(a.id) - parseTaskId(b.id);
+						});
+				}
+
+				function getSelectedOwnedTask(ownerName: string): TeamTask | null {
+					const owned = getOwnedTasks(ownerName);
+					if (owned.length === 0) return null;
+					const clamped = Math.max(0, Math.min(taskCursorIndex, owned.length - 1));
+					taskCursorIndex = clamped;
+					return owned[clamped] ?? null;
 				}
 
 				// ── Build row data (same logic as persistent widget) ──
@@ -511,13 +532,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					const taskById = new Map<string, TeamTask>();
 					for (const task of allTasks) taskById.set(task.id, task);
 
-					const ownerTasks = allTasks
-						.filter((task) => task.owner === ownerName)
-						.sort((a, b) => {
-							const rank = taskStatusRank(a.status) - taskStatusRank(b.status);
-							if (rank !== 0) return rank;
-							return parseTaskId(a.id) - parseTaskId(b.id);
-						});
+					const ownerTasks = getOwnedTasks(ownerName);
 
 					if (taskCursorIndex >= ownerTasks.length) taskCursorIndex = Math.max(0, ownerTasks.length - 1);
 
@@ -625,7 +640,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					lines.push(truncateToWidth(` ${sep}`, width));
 					lines.push(
 						truncateToWidth(
-							theme.fg("dim", ` ↑↓/ws select · enter open transcript · m/d message · a abort · k kill · ${returnLabel}`),
+							theme.fg("dim", ` ↑↓/ws select · enter transcript · c complete · p pending · i in-progress · u unassign · m/d message · ${returnLabel}`),
 							width,
 						),
 					);
@@ -729,9 +744,45 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 								return;
 							}
 							if (matchesKey(data, "down") || data === "s") {
-								const ownedCount = deps.getTasks().filter((task) => task.owner === taskViewOwner).length;
+								const ownedCount = getOwnedTasks(taskViewOwner).length;
 								taskCursorIndex = Math.min(Math.max(0, ownedCount - 1), taskCursorIndex + 1);
 								tui.requestRender();
+								return;
+							}
+							if (data === "c" || data === "p" || data === "i" || data === "u") {
+								const selected = getSelectedOwnedTask(taskViewOwner);
+								if (!selected) {
+									showNotification("No task selected", "error");
+									return;
+								}
+
+								if (data === "u") {
+									const taskId = selected.id;
+									void deps.unassignTask(taskId)
+										.then((ok) => {
+											if (ok) showNotification(`Unassigned task #${taskId}`);
+											else showNotification(`Failed to unassign task #${taskId}`, "error");
+										})
+										.catch(() => showNotification(`Failed to unassign task #${taskId}`, "error"));
+									return;
+								}
+
+								const targetStatus: TeamTask["status"] = data === "c"
+									? "completed"
+									: data === "i"
+										? "in_progress"
+										: "pending";
+								if (selected.status === targetStatus) {
+									showNotification(`Task #${selected.id} already ${targetStatus}`, "muted");
+									return;
+								}
+								const taskId = selected.id;
+								void deps.setTaskStatus(taskId, targetStatus)
+									.then((ok) => {
+										if (ok) showNotification(`Task #${taskId} set to ${targetStatus}`);
+										else showNotification(`Failed to update task #${taskId}`, "error");
+									})
+									.catch(() => showNotification(`Failed to update task #${taskId}`, "error"));
 								return;
 							}
 							if (matchesKey(data, "enter") || data === "o") {
