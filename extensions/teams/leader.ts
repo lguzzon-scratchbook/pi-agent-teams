@@ -602,6 +602,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		getTaskListId: () => taskListId,
 		refreshTasks,
 		renderWidget,
+		pendingPlanApprovals,
 	});
 
 	const openWidget = async (ctx: ExtensionCommandContext) => {

@@ -40,6 +40,8 @@ const TeamsActionSchema = StringEnum(
 		"member_shutdown",
 		"member_kill",
 		"member_prune",
+		"plan_approve",
+		"plan_reject",
 	] as const,
 	{
 		description: "Teams tool action.",
@@ -81,6 +83,7 @@ const TeamsToolParamsSchema = Type.Object({
 	name: Type.Optional(Type.String({ description: "Teammate name for member/message actions." })),
 	message: Type.Optional(Type.String({ description: "Message body for messaging actions." })),
 	reason: Type.Optional(Type.String({ description: "Optional reason for lifecycle actions." })),
+	feedback: Type.Optional(Type.String({ description: "Feedback for action=plan_reject." })),
 	all: Type.Optional(Type.Boolean({ description: "For member_shutdown/member_prune, apply to all workers." })),
 	planRequired: Type.Optional(Type.Boolean({ description: "For member_spawn, start worker in plan-required mode." })),
 	teammates: Type.Optional(
@@ -117,8 +120,9 @@ export function registerTeamsTool(opts: {
 	getTaskListId: () => string | null;
 	refreshTasks: () => Promise<void>;
 	renderWidget: () => void;
+	pendingPlanApprovals: Map<string, { requestId: string; name: string; taskId?: string }>;
 }): void {
-	const { pi, teammates, spawnTeammate, getTeamId, getTaskListId, refreshTasks, renderWidget } = opts;
+	const { pi, teammates, spawnTeammate, getTeamId, getTaskListId, refreshTasks, renderWidget, pendingPlanApprovals } = opts;
 
 	pi.registerTool({
 		name: "teams",
@@ -596,6 +600,76 @@ export function registerTeamsTool(opts: {
 				return {
 					content: [{ type: "text", text: `Pruned ${pruned.length} stale ${strings.memberTitle.toLowerCase()}(s): ${pruned.map((n) => formatMemberDisplayName(style, n)).join(", ")}` }],
 					details: { action, teamId, pruned },
+				};
+			}
+
+			if (action === "plan_approve") {
+				const nameRaw = params.name?.trim();
+				const name = sanitizeName(nameRaw ?? "");
+				if (!name) {
+					return {
+						content: [{ type: "text", text: "plan_approve requires name" }],
+						details: { action, name: nameRaw },
+					};
+				}
+				const pending = pendingPlanApprovals.get(name);
+				if (!pending) {
+					return {
+						content: [{ type: "text", text: `No pending plan approval for ${name}` }],
+						details: { action, name },
+					};
+				}
+				const ts = new Date().toISOString();
+				await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
+					from: cfg.leadName,
+					text: JSON.stringify({
+						type: "plan_approved",
+						requestId: pending.requestId,
+						from: cfg.leadName,
+						timestamp: ts,
+					}),
+					timestamp: ts,
+				});
+				pendingPlanApprovals.delete(name);
+				return {
+					content: [{ type: "text", text: `Approved plan for ${formatMemberDisplayName(style, name)}` }],
+					details: { action, teamId, name, requestId: pending.requestId, taskId: pending.taskId },
+				};
+			}
+
+			if (action === "plan_reject") {
+				const nameRaw = params.name?.trim();
+				const name = sanitizeName(nameRaw ?? "");
+				if (!name) {
+					return {
+						content: [{ type: "text", text: "plan_reject requires name" }],
+						details: { action, name: nameRaw },
+					};
+				}
+				const pending = pendingPlanApprovals.get(name);
+				if (!pending) {
+					return {
+						content: [{ type: "text", text: `No pending plan approval for ${name}` }],
+						details: { action, name },
+					};
+				}
+				const feedback = params.feedback?.trim() || params.reason?.trim() || "Plan rejected";
+				const ts = new Date().toISOString();
+				await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
+					from: cfg.leadName,
+					text: JSON.stringify({
+						type: "plan_rejected",
+						requestId: pending.requestId,
+						from: cfg.leadName,
+						feedback,
+						timestamp: ts,
+					}),
+					timestamp: ts,
+				});
+				pendingPlanApprovals.delete(name);
+				return {
+					content: [{ type: "text", text: `Rejected plan for ${formatMemberDisplayName(style, name)}: ${feedback}` }],
+					details: { action, teamId, name, requestId: pending.requestId, taskId: pending.taskId, feedback },
 				};
 			}
 

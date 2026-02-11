@@ -45,9 +45,11 @@ teams({ action: "member_spawn", name: "alice", contextMode: "branch", workspaceM
 teams({ action: "member_shutdown", name: "alice", reason: "checkpoint reached" })
 teams({ action: "member_kill", name: "alice" })
 teams({ action: "member_prune", all: true })
+teams({ action: "plan_approve", name: "alice" })
+teams({ action: "plan_reject", name: "alice", feedback: "Include rollback strategy" })
 ```
 
-This spawns teammates as needed, creates tasks, assigns them, mutates dependencies/status/ownership, sends team messages, and handles teammate lifecycle actions without slash commands. Options: `contextMode` ("fresh" or "branch"), `workspaceMode` ("shared" or "worktree").
+This spawns teammates as needed, creates tasks, assigns them, mutates dependencies/status/ownership, sends team messages, handles teammate lifecycle actions, and can approve/reject plan-required workers without slash commands. Options: `contextMode` ("fresh" or "branch"), `workspaceMode` ("shared" or "worktree").
 
 For more control, use `/team spawn`:
 

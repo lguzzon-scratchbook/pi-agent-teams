@@ -147,6 +147,8 @@ Task/messaging mutation examples (agent-run, no user command needed):
 { "action": "member_shutdown", "name": "alice", "reason": "checkpoint reached" }
 { "action": "member_kill", "name": "alice" }
 { "action": "member_prune", "all": true }
+{ "action": "plan_approve", "name": "alice" }
+{ "action": "plan_reject", "name": "alice", "feedback": "Include rollback strategy" }
 ```
 
 ## Commands
