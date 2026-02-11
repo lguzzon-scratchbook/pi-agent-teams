@@ -171,6 +171,16 @@ All management commands live under `/team`.
 | `/team id` | Print team/task-list IDs and paths |
 | `/team env <name>` | Print env vars to start a manual teammate |
 
+### Panel shortcuts (`/tw` / `/team panel`)
+
+- `↑/↓` or `w/s`: select teammate / scroll transcript
+- `1..9`: jump directly to teammate in overview
+- `enter`: open selected teammate transcript
+- `m` or `d`: compose message to selected teammate
+- `a`: request abort
+- `k`: kill (SIGTERM)
+- `esc`: back/close panel
+
 ### Tasks
 
 | Command | Description |

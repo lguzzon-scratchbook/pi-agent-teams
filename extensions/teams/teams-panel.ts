@@ -56,6 +56,19 @@ type WidgetMode = "overview" | "session" | "dm";
 
 // ── Transcript formatting ──
 
+function summarizeTranscriptEntry(entry: TranscriptEntry | undefined): string | null {
+	if (!entry) return null;
+	if (entry.kind === "text") {
+		const compact = entry.text.replace(/\s+/g, " ").trim();
+		if (!compact) return null;
+		return compact.length > 96 ? `${compact.slice(0, 95)}…` : compact;
+	}
+	if (entry.kind === "tool_start") return `running ${entry.toolName}`;
+	if (entry.kind === "tool_end") return `finished ${entry.toolName} (${(entry.durationMs / 1000).toFixed(1)}s)`;
+	const tok = formatTokens(entry.tokens);
+	return `turn ${String(entry.turnNumber)} complete (${tok} tokens)`;
+}
+
 function formatTranscriptEntry(entry: TranscriptEntry, theme: Theme, width: number): string[] {
 	const ts = formatTimestamp(entry.timestamp);
 	const tsStr = theme.fg("dim", ts);
@@ -297,6 +310,39 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 						lines.push(truncateToWidth(totalRow, width));
 					}
 
+					const selectedName = memberNames[cursorIndex];
+					if (selectedName) {
+						const selectedLabel = formatMemberDisplayName(style, selectedName);
+						const owned = tasks.filter((t) => t.owner === selectedName);
+						const activeTask = owned.find((t) => t.status === "in_progress");
+						const latestCompleted = owned
+							.filter((t) => t.status === "completed")
+							.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))
+							.at(0);
+						const entries = deps.getTranscript(selectedName).getEntries();
+						const lastSummary = summarizeTranscriptEntry(entries.at(-1));
+
+						lines.push(truncateToWidth(` ${theme.fg("muted", "selected:")} ${theme.bold(theme.fg("accent", selectedLabel))}`, width));
+						if (activeTask) {
+							lines.push(
+								truncateToWidth(
+									` ${theme.fg("dim", "active:")} ${theme.fg("warning", `#${String(activeTask.id)} ${activeTask.subject}`)}`,
+									width,
+								),
+							);
+						} else if (latestCompleted) {
+							lines.push(
+								truncateToWidth(
+									` ${theme.fg("dim", "last done:")} ${theme.fg("success", `#${String(latestCompleted.id)} ${latestCompleted.subject}`)}`,
+									width,
+								),
+							);
+						}
+						if (lastSummary) {
+							lines.push(truncateToWidth(` ${theme.fg("dim", "last event:")} ${theme.fg("muted", lastSummary)}`, width));
+						}
+					}
+
 					// Notification
 					if (notification) {
 						lines.push(truncateToWidth(" " + theme.fg(notification.color, notification.text), width));
@@ -305,7 +351,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					// Hints
 					const hints = theme.fg(
 						"dim",
-						" \u2191\u2193 select \u00b7 enter view \u00b7 m message \u00b7 a abort \u00b7 k kill \u00b7 esc close",
+						" \u2191\u2193/ws select \u00b7 1-9 jump \u00b7 enter view \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc close",
 					);
 					lines.push(truncateToWidth(hints, width));
 
@@ -415,7 +461,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 					// Hints
 					lines.push(truncateToWidth(` ${sep}`, width));
 					lines.push(truncateToWidth(
-						theme.fg("dim", " \u2191\u2193 scroll \u00b7 g follow \u00b7 m message \u00b7 a abort \u00b7 k kill \u00b7 esc back"),
+						theme.fg("dim", " \u2191\u2193/ws scroll \u00b7 g follow \u00b7 m/d message \u00b7 a abort \u00b7 k kill \u00b7 esc back"),
 						width,
 					));
 
@@ -505,13 +551,13 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 								tui.requestRender();
 								return;
 							}
-							if (matchesKey(data, "up")) {
+							if (matchesKey(data, "up") || data === "w") {
 								sessionScrollOffset += 1;
 								sessionAutoFollow = false;
 								tui.requestRender();
 								return;
 							}
-							if (matchesKey(data, "down")) {
+							if (matchesKey(data, "down") || data === "s") {
 								sessionScrollOffset = Math.max(0, sessionScrollOffset - 1);
 								if (sessionScrollOffset === 0) sessionAutoFollow = true;
 								tui.requestRender();
@@ -539,7 +585,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 								tui.requestRender();
 								return;
 							}
-							if (data === "m") {
+							if (data === "m" || data === "d") {
 								dmTarget = sessionName;
 								mode = "dm";
 								dmBuffer = "";
@@ -578,14 +624,22 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 							done(undefined);
 							return;
 						}
-						if (matchesKey(data, "up")) {
+						if (matchesKey(data, "up") || data === "w") {
 							cursorIndex = Math.max(0, cursorIndex - 1);
 							tui.requestRender();
 							return;
 						}
-						if (matchesKey(data, "down")) {
+						if (matchesKey(data, "down") || data === "s") {
 							cursorIndex = Math.min(memberNames.length - 1, cursorIndex + 1);
 							tui.requestRender();
+							return;
+						}
+						if (/^[1-9]$/.test(data)) {
+							const jump = Number.parseInt(data, 10) - 1;
+							if (jump < memberNames.length) {
+								cursorIndex = jump;
+								tui.requestRender();
+							}
 							return;
 						}
 						if (matchesKey(data, "enter")) {
@@ -599,7 +653,7 @@ export async function openInteractiveWidget(ctx: ExtensionCommandContext, deps: 
 							}
 							return;
 						}
-						if (data === "m") {
+						if (data === "m" || data === "d") {
 							const name = memberNames[cursorIndex];
 							if (name) {
 								dmTarget = name;
