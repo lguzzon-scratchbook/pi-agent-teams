@@ -33,6 +33,7 @@ import { ensureTeamConfig, loadTeamConfig, upsertMember, setMemberStatus } from 
 import { sanitizeName } from "../extensions/teams/names.js";
 import { getTeamsNamingRules, getTeamsStrings } from "../extensions/teams/teams-style.js";
 import { runTeamsHook } from "../extensions/teams/hooks.js";
+import { listDiscoveredTeams } from "../extensions/teams/team-discovery.js";
 import { getTeamHelpText } from "../extensions/teams/leader-team-command.js";
 import {
 	TEAM_MAILBOX_NS,
@@ -518,12 +519,53 @@ console.log("\n9. teams-hooks (quality gates)");
 	else process.env.PI_TEAMS_HOOKS_ENABLED = prevEnabled;
 }
 
-// ── 10. docs/help drift guard ────────────────────────────────────────
-console.log("\n10. docs/help drift guard");
+// ── 10. team discovery (attach flow) ────────────────────────────────
+console.log("\n10. team discovery (attach flow)");
+{
+	const discoverRoot = path.join(tmpRoot, "discover-root");
+	const aDir = path.join(discoverRoot, "team-a");
+	const bDir = path.join(discoverRoot, "team-b");
+	fs.mkdirSync(path.join(discoverRoot, "_styles"), { recursive: true });
+
+	await ensureTeamConfig(aDir, {
+		teamId: "team-a",
+		taskListId: "tasks-a",
+		leadName: "team-lead",
+		style: "normal",
+	});
+	await ensureTeamConfig(bDir, {
+		teamId: "team-b",
+		taskListId: "tasks-b",
+		leadName: "team-lead",
+		style: "pirate",
+	});
+	await upsertMember(bDir, {
+		name: "agent1",
+		role: "worker",
+		status: "online",
+	});
+
+	const discovered = await listDiscoveredTeams(discoverRoot);
+	assert(discovered.some((t) => t.teamId === "team-a"), "discovers first team");
+	assert(discovered.some((t) => t.teamId === "team-b"), "discovers second team");
+	assert(!discovered.some((t) => t.teamId.startsWith("_")), "ignores internal directories");
+	const b = discovered.find((t) => t.teamId === "team-b");
+	assert(b !== undefined, "team-b discovered");
+	if (b) {
+		assertEq(b.taskListId, "tasks-b", "discovered taskListId");
+		assertEq(b.style, "pirate", "discovered style");
+		assertEq(b.onlineWorkerCount, 1, "discovered online worker count");
+	}
+}
+
+// ── 11. docs/help drift guard ────────────────────────────────────────
+console.log("\n11. docs/help drift guard");
 {
 	const help = getTeamHelpText();
 	assert(help.includes("/team style list"), "help mentions /team style list");
 	assert(help.includes("/team style init"), "help mentions /team style init");
+	assert(help.includes("/team attach <teamId>"), "help mentions /team attach");
+	assert(help.includes("/team detach"), "help mentions /team detach");
 
 	const readmePath = path.join(process.cwd(), "README.md");
 	if (!fs.existsSync(readmePath)) {
@@ -531,6 +573,8 @@ console.log("\n10. docs/help drift guard");
 	} else {
 		const readme = fs.readFileSync(readmePath, "utf8");
 		assert(readme.includes("/team style list"), "README mentions /team style list");
+		assert(readme.includes("/team attach <teamId>"), "README mentions /team attach");
+		assert(readme.includes("/team detach"), "README mentions /team detach");
 		assert(readme.includes("_styles"), "README mentions _styles directory");
 	}
 }

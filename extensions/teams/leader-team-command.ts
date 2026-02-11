@@ -5,6 +5,7 @@ import {
 	handleTeamIdCommand,
 	handleTeamListCommand,
 } from "./leader-info-commands.js";
+import { handleTeamAttachCommand, handleTeamDetachCommand } from "./leader-attach-commands.js";
 import {
 	handleTeamCleanupCommand,
 	handleTeamDelegateCommand,
@@ -33,6 +34,9 @@ const TEAM_HELP_TEXT = [
 	"Usage:",
 	"  /team id",
 	"  /team env <name>",
+	"  /team attach list",
+	"  /team attach <teamId>",
+	"  /team detach",
 	"  /team spawn <name> [fresh|branch] [shared|worktree] [plan] [--model <provider>/<modelId>] [--thinking <level>]",
 	"  /team panel",
 	"  /team send <name> <msg...>",
@@ -78,6 +82,8 @@ export async function handleTeamCommand(opts: {
 	renderWidget: () => void;
 	getTaskListId: () => string | null;
 	setTaskListId: (id: string) => void;
+	getActiveTeamId: () => string;
+	setActiveTeamId: (teamId: string) => void;
 	pendingPlanApprovals: Map<string, { requestId: string; name: string; taskId?: string }>;
 	getDelegateMode: () => boolean;
 	setDelegateMode: (next: boolean) => void;
@@ -100,6 +106,8 @@ export async function handleTeamCommand(opts: {
 		renderWidget,
 		getTaskListId,
 		setTaskListId,
+		getActiveTeamId,
+		setActiveTeamId,
 		pendingPlanApprovals,
 		getDelegateMode,
 		setDelegateMode,
@@ -114,6 +122,7 @@ export async function handleTeamCommand(opts: {
 	} = opts;
 
 	const style = getStyle();
+	const activeTeamId = getActiveTeamId();
 	const leadName = getTeamConfig()?.leadName ?? "team-lead";
 	const taskListId = getTaskListId();
 
@@ -140,6 +149,7 @@ export async function handleTeamCommand(opts: {
 		id: async () => {
 			await handleTeamIdCommand({
 				ctx,
+				teamId: activeTeamId,
 				taskListId,
 				leadName,
 				style,
@@ -150,6 +160,7 @@ export async function handleTeamCommand(opts: {
 			await handleTeamEnvCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				taskListId,
 				leadName,
 				style,
@@ -158,10 +169,39 @@ export async function handleTeamCommand(opts: {
 			});
 		},
 
+		attach: async () => {
+			await handleTeamAttachCommand({
+				ctx,
+				rest,
+				defaultTeamId: ctx.sessionManager.getSessionId(),
+				teammates,
+				getActiveTeamId,
+				setActiveTeamId,
+				setStyle,
+				setTaskListId,
+				refreshTasks,
+				renderWidget,
+			});
+		},
+
+		detach: async () => {
+			await handleTeamDetachCommand({
+				ctx,
+				defaultTeamId: ctx.sessionManager.getSessionId(),
+				teammates,
+				getActiveTeamId,
+				setActiveTeamId,
+				setTaskListId,
+				refreshTasks,
+				renderWidget,
+			});
+		},
+
 		cleanup: async () => {
 			await handleTeamCleanupCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				teammates,
 				refreshTasks,
 				getTasks,
@@ -174,6 +214,7 @@ export async function handleTeamCommand(opts: {
 			await handleTeamPruneCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				teammates,
 				getTeamConfig,
 				refreshTasks,
@@ -197,11 +238,13 @@ export async function handleTeamCommand(opts: {
 			await handleTeamShutdownCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				teammates,
 				getTeamConfig,
 				leadName,
 				style,
 				getCurrentCtx,
+				getActiveTeamId,
 				stopAllTeammates,
 				refreshTasks,
 				getTasks,
@@ -214,8 +257,7 @@ export async function handleTeamCommand(opts: {
 		},
 
 		style: async () => {
-			const teamId = ctx.sessionManager.getSessionId();
-			const teamDir = getTeamDir(teamId);
+			const teamDir = getTeamDir(activeTeamId);
 			await handleTeamStyleCommand({
 				ctx,
 				rest,
@@ -255,6 +297,7 @@ export async function handleTeamCommand(opts: {
 			await handleTeamStopCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				teammates,
 				leadName,
 				style,
@@ -268,6 +311,7 @@ export async function handleTeamCommand(opts: {
 			await handleTeamKillCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				teammates,
 				leadName,
 				style,
@@ -281,6 +325,7 @@ export async function handleTeamCommand(opts: {
 			await handleTeamDmCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				leadName,
 				style,
 			});
@@ -290,6 +335,7 @@ export async function handleTeamCommand(opts: {
 			await handleTeamBroadcastCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				teammates,
 				leadName,
 				style,
@@ -303,6 +349,7 @@ export async function handleTeamCommand(opts: {
 			await handleTeamTaskCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				leadName,
 				style,
 				getTaskListId,
@@ -317,6 +364,7 @@ export async function handleTeamCommand(opts: {
 			await handleTeamPlanCommand({
 				ctx,
 				rest,
+				teamId: activeTeamId,
 				leadName,
 				style,
 				pendingPlanApprovals,
@@ -324,7 +372,7 @@ export async function handleTeamCommand(opts: {
 		},
 	};
 
-	const normalizedSub = sub === "widget" ? "panel" : sub;
+	const normalizedSub = sub === "widget" ? "panel" : sub === "join" ? "attach" : sub;
 	const handler = handlers[normalizedSub];
 	if (!handler) {
 		ctx.ui.notify(`Unknown subcommand: ${sub}`, "error");

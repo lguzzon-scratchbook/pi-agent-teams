@@ -98,6 +98,10 @@ Or drive it manually:
 /team spawn alice                          # spawn a teammate (fresh session, shared workspace)
 /team spawn bob branch worktree            # spawn with leader context + isolated worktree
 
+/team attach list                          # discover existing teams under ~/.pi/agent/teams
+/team attach <teamId>                      # attach this session to an existing team workspace
+/team detach                               # return to this session's own team
+
 /team task add alice: Fix failing tests    # create a task and assign it to alice
 /team task add Refactor auth module        # unassigned — auto-claimed by next idle teammate
 
@@ -147,6 +151,9 @@ All management commands live under `/team`.
 | `/team spawn <name> [fresh\|branch] [shared\|worktree] [plan] [--model <provider>/<modelId>] [--thinking <level>]` | Start a teammate |
 | `/team list` | List teammates and their status |
 | `/team panel` | Interactive widget panel (same as `/tw`) |
+| `/team attach list` | Discover existing team workspaces under `<teamsRoot>` |
+| `/team attach <teamId>` | Attach this session to an existing team workspace |
+| `/team detach` | Return to this session's own team workspace |
 | `/team style` | Show current style + usage |
 | `/team style list` | List available styles (built-in + custom) |
 | `/team style init <name> [extends <base>]` | Create a custom style template under `~/.pi/agent/teams/_styles/` |

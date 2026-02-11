@@ -9,11 +9,12 @@ import { formatMemberDisplayName } from "./teams-style.js";
 export async function handleTeamPlanCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	leadName: string;
 	style: TeamsStyle;
 	pendingPlanApprovals: Map<string, { requestId: string; name: string; taskId?: string }>;
 }): Promise<void> {
-	const { ctx, rest, leadName, style, pendingPlanApprovals } = opts;
+	const { ctx, rest, teamId, leadName, style, pendingPlanApprovals } = opts;
 
 	const [planSub, ...planRest] = rest;
 	if (!planSub || planSub === "help") {
@@ -41,7 +42,6 @@ export async function handleTeamPlanCommand(opts: {
 			return;
 		}
 
-		const teamId = ctx.sessionManager.getSessionId();
 		const teamDir = getTeamDir(teamId);
 		const ts = new Date().toISOString();
 		await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
@@ -73,7 +73,6 @@ export async function handleTeamPlanCommand(opts: {
 		}
 
 		const feedback = planRest.slice(1).join(" ").trim() || "Plan rejected";
-		const teamId = ctx.sessionManager.getSessionId();
 		const teamDir = getTeamDir(teamId);
 		const ts = new Date().toISOString();
 		await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {

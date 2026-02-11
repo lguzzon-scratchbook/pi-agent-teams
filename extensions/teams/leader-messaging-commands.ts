@@ -67,10 +67,11 @@ export async function handleTeamSteerCommand(opts: {
 export async function handleTeamDmCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	leadName: string;
 	style: TeamsStyle;
 }): Promise<void> {
-	const { ctx, rest, leadName, style } = opts;
+	const { ctx, rest, teamId, leadName, style } = opts;
 
 	const nameRaw = rest[0];
 	const msg = rest.slice(1).join(" ").trim();
@@ -79,7 +80,6 @@ export async function handleTeamDmCommand(opts: {
 		return;
 	}
 	const name = sanitizeName(nameRaw);
-	const teamId = ctx.sessionManager.getSessionId();
 	await writeToMailbox(getTeamDir(teamId), TEAM_MAILBOX_NS, name, {
 		from: leadName,
 		text: msg,
@@ -91,6 +91,7 @@ export async function handleTeamDmCommand(opts: {
 export async function handleTeamBroadcastCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	teammates: Map<string, TeammateRpc>;
 	leadName: string;
 	style: TeamsStyle;
@@ -98,7 +99,7 @@ export async function handleTeamBroadcastCommand(opts: {
 	getTasks: () => TeamTask[];
 	getTaskListId: () => string | null;
 }): Promise<void> {
-	const { ctx, rest, teammates, leadName, style, refreshTasks, getTasks, getTaskListId } = opts;
+	const { ctx, rest, teamId, teammates, leadName, style, refreshTasks, getTasks, getTaskListId } = opts;
 	const strings = getTeamsStrings(style);
 
 	const msg = rest.join(" ").trim();
@@ -107,7 +108,6 @@ export async function handleTeamBroadcastCommand(opts: {
 		return;
 	}
 
-	const teamId = ctx.sessionManager.getSessionId();
 	const teamDir = getTeamDir(teamId);
 	const taskListId = getTaskListId();
 	const cfg = await ensureTeamConfig(teamDir, { teamId, taskListId: taskListId ?? teamId, leadName, style });

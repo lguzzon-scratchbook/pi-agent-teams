@@ -31,6 +31,7 @@ function parseAssigneePrefix(text: string): { assignee?: string; text: string } 
 export async function handleTeamTaskCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	leadName: string;
 	style: TeamsStyle;
 	getTaskListId: () => string | null;
@@ -42,6 +43,7 @@ export async function handleTeamTaskCommand(opts: {
 	const {
 		ctx,
 		rest,
+		teamId,
 		leadName,
 		style,
 		getTaskListId,
@@ -52,7 +54,6 @@ export async function handleTeamTaskCommand(opts: {
 	} = opts;
 
 	const [taskSub, ...taskRest] = rest;
-	const teamId = ctx.sessionManager.getSessionId();
 	const teamDir = getTeamDir(teamId);
 	const effectiveTlId = getTaskListId() ?? teamId;
 

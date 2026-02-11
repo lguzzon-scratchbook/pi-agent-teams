@@ -100,6 +100,9 @@ Spawning with `plan` restricts the teammate to read-only tools. After producing 
 ```
 /team panel                    # interactive overlay with teammate details
 /team list                     # show teammates and their state
+/team attach list              # discover existing teams under <teamsRoot>
+/team attach <teamId>          # attach this session to an existing team workspace
+/team detach                   # return to this session's own team workspace
 /team shutdown                 # stop all teammates (RPC + best-effort manual) (leader session remains active)
 /team shutdown <name>          # graceful shutdown (teammate can reject if busy)
 /team prune [--all]            # hide stale manual teammates (mark offline in config)

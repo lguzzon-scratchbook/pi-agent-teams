@@ -152,13 +152,14 @@ export async function handleTeamStyleCommand(opts: {
 export async function handleTeamCleanupCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	teammates: Map<string, TeammateRpc>;
 	refreshTasks: () => Promise<void>;
 	getTasks: () => TeamTask[];
 	renderWidget: () => void;
 	style: TeamsStyle;
 }): Promise<void> {
-	const { ctx, rest, teammates, refreshTasks, getTasks, renderWidget, style } = opts;
+	const { ctx, rest, teamId, teammates, refreshTasks, getTasks, renderWidget, style } = opts;
 	const strings = getTeamsStrings(style);
 
 	const flags = rest.filter((a) => a.startsWith("--"));
@@ -175,7 +176,6 @@ export async function handleTeamCleanupCommand(opts: {
 		return;
 	}
 
-	const teamId = ctx.sessionManager.getSessionId();
 	const teamsRoot = getTeamsRootDir();
 	const teamDir = getTeamDir(teamId);
 
@@ -234,17 +234,19 @@ export async function handleTeamCleanupCommand(opts: {
 export async function handleTeamShutdownCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	teammates: Map<string, TeammateRpc>;
 	getTeamConfig: () => TeamConfig | null;
 	leadName: string;
 	style: TeamsStyle;
 	getCurrentCtx: () => ExtensionContext | null;
+	getActiveTeamId: () => string;
 	stopAllTeammates: (ctx: ExtensionContext, reason: string) => Promise<void>;
 	refreshTasks: () => Promise<void>;
 	getTasks: () => TeamTask[];
 	renderWidget: () => void;
 }): Promise<void> {
-	const { ctx, rest, teammates, getTeamConfig, leadName, style, getCurrentCtx, stopAllTeammates, refreshTasks, getTasks, renderWidget } = opts;
+	const { ctx, rest, teamId, teammates, getTeamConfig, leadName, style, getCurrentCtx, getActiveTeamId, stopAllTeammates, refreshTasks, getTasks, renderWidget } = opts;
 	const strings = getTeamsStrings(style);
 	const nameRaw = rest[0];
 
@@ -253,7 +255,6 @@ export async function handleTeamShutdownCommand(opts: {
 		const name = sanitizeName(nameRaw);
 		const reason = rest.slice(1).join(" ").trim() || undefined;
 
-		const teamId = ctx.sessionManager.getSessionId();
 		const teamDir = getTeamDir(teamId);
 
 		const requestId = randomUUID();
@@ -293,7 +294,7 @@ export async function handleTeamShutdownCommand(opts: {
 		const t = teammates.get(name);
 		if (t) {
 			setTimeout(() => {
-				if (getCurrentCtx()?.sessionManager.getSessionId() !== teamId) return;
+				if (getActiveTeamId() !== teamId) return;
 				if (t.status === "stopped" || t.status === "error") return;
 				void (async () => {
 					try {
@@ -349,7 +350,6 @@ export async function handleTeamShutdownCommand(opts: {
 	// Also mark them offline so they stop cluttering the UI if they were left behind from old runs.
 	await refreshTasks();
 	const cfg = getTeamConfig();
-	const teamId = ctx.sessionManager.getSessionId();
 	const teamDir = getTeamDir(teamId);
 
 	const inProgressOwners = new Set<string>();
@@ -395,6 +395,7 @@ export async function handleTeamShutdownCommand(opts: {
 export async function handleTeamPruneCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	teammates: Map<string, TeammateRpc>;
 	getTeamConfig: () => TeamConfig | null;
 	refreshTasks: () => Promise<void>;
@@ -402,7 +403,7 @@ export async function handleTeamPruneCommand(opts: {
 	style: TeamsStyle;
 	renderWidget: () => void;
 }): Promise<void> {
-	const { ctx, rest, teammates, getTeamConfig, refreshTasks, getTasks, style, renderWidget } = opts;
+	const { ctx, rest, teamId, teammates, getTeamConfig, refreshTasks, getTasks, style, renderWidget } = opts;
 	const strings = getTeamsStrings(style);
 
 	const flags = rest.filter((a) => a.startsWith("--"));
@@ -445,7 +446,6 @@ export async function handleTeamPruneCommand(opts: {
 			if (now - lastSeen < cutoffMs) continue;
 		}
 
-		const teamId = ctx.sessionManager.getSessionId();
 		const teamDir = getTeamDir(teamId);
 		await setMemberStatus(teamDir, m.name, "offline", {
 			meta: { prunedAt: new Date().toISOString(), prunedBy: "leader" },
@@ -466,6 +466,7 @@ export async function handleTeamPruneCommand(opts: {
 export async function handleTeamStopCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	teammates: Map<string, TeammateRpc>;
 	leadName: string;
 	style: TeamsStyle;
@@ -473,7 +474,7 @@ export async function handleTeamStopCommand(opts: {
 	getTasks: () => TeamTask[];
 	renderWidget: () => void;
 }): Promise<void> {
-	const { ctx, rest, teammates, leadName, style, refreshTasks, getTasks, renderWidget } = opts;
+	const { ctx, rest, teamId, teammates, leadName, style, refreshTasks, getTasks, renderWidget } = opts;
 
 	const nameRaw = rest[0];
 	const reason = rest.slice(1).join(" ").trim();
@@ -483,7 +484,6 @@ export async function handleTeamStopCommand(opts: {
 	}
 	const name = sanitizeName(nameRaw);
 
-	const teamId = ctx.sessionManager.getSessionId();
 	const teamDir = getTeamDir(teamId);
 
 	// Best-effort: include current in-progress task id (if any).
@@ -522,6 +522,7 @@ export async function handleTeamStopCommand(opts: {
 export async function handleTeamKillCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	teammates: Map<string, TeammateRpc>;
 	leadName: string;
 	style: TeamsStyle;
@@ -529,7 +530,7 @@ export async function handleTeamKillCommand(opts: {
 	refreshTasks: () => Promise<void>;
 	renderWidget: () => void;
 }): Promise<void> {
-	const { ctx, rest, teammates, taskListId, leadName: _leadName, style, refreshTasks, renderWidget } = opts;
+	const { ctx, rest, teamId, teammates, taskListId, leadName: _leadName, style, refreshTasks, renderWidget } = opts;
 	const strings = getTeamsStrings(style);
 
 	const nameRaw = rest[0];
@@ -547,7 +548,6 @@ export async function handleTeamKillCommand(opts: {
 	await t.stop();
 	teammates.delete(name);
 
-	const teamId = ctx.sessionManager.getSessionId();
 	const teamDir = getTeamDir(teamId);
 	const effectiveTlId = taskListId ?? teamId;
 	await unassignTasksForAgent(teamDir, effectiveTlId, name, `${formatMemberDisplayName(style, name)} ${strings.killedVerb}`);

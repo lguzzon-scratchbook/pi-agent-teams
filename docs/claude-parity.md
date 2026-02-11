@@ -56,6 +56,7 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
 | Hooks / quality gates | `ComradeIdle`, `TaskCompleted` hooks | 🟡 | Optional leader-side hook runner (idle/task-complete/task-fail) via `PI_TEAMS_HOOKS_ENABLED=1` + scripts under `_hooks/`. Still missing richer gating UX + standardized hook contract. | P2 |
 | Task list UX | Ctrl+T toggle; show all/clear tasks by asking | 🟡 | Widget + `/team task list` + `/team task show` + `/team task clear`. No Ctrl+T toggle yet. | P0 |
 | Shared task list across sessions | `CLAUDE_CODE_TASK_LIST_ID=...` | ✅ | Worker env: `PI_TEAMS_TASK_LIST_ID` (manual workers). Leader: `/team task use <taskListId>` (persisted). Newly spawned workers inherit; existing workers need restart. | P1 |
+| Join/attach flow | Join existing team context from another running session | 🟡 | `/team attach list`, `/team attach <teamId>`, `/team detach` added. Still missing explicit peer approval/claim handshakes and richer attach UX in panel. | P2 |
 
 ## Prioritized roadmap
 
@@ -108,13 +109,15 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
    - Improve the existing widget/panel affordances (selection, transcript view, actions)
    - (Optional) tmux integration for split panes.
 
-12) **Join/attach flow**
-   - Allow a running session to attach to an existing team (discover + approve join).
+12) **Join/attach flow** 🟡 (partial)
+   - Implemented: `/team attach list`, `/team attach <teamId>`, `/team detach`.
+   - Next: explicit peer approval/claim handshake and better panel affordances for attached mode.
 
 ## Where changes would land (code map)
 
 - Leader orchestration: `extensions/teams/leader.ts`
 - Leader `/team` command dispatch: `extensions/teams/leader-team-command.ts`
+- Attach/discovery commands: `extensions/teams/leader-attach-commands.ts`, `extensions/teams/team-discovery.ts`
 - Leader LLM tool (`teams`): `extensions/teams/leader-teams-tool.ts`
 - Worker mailbox polling + self-claim + protocols: `extensions/teams/worker.ts`
 - Task store + locking: `extensions/teams/task-store.ts`, `extensions/teams/fs-lock.ts`

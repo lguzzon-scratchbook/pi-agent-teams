@@ -49,13 +49,13 @@ export async function handleTeamListCommand(opts: {
 
 export async function handleTeamIdCommand(opts: {
 	ctx: ExtensionCommandContext;
+	teamId: string;
 	taskListId: string | null;
 	leadName: string;
 	style: TeamsStyle;
 }): Promise<void> {
-	const { ctx, taskListId, leadName, style } = opts;
-
-	const teamId = ctx.sessionManager.getSessionId();
+	const { ctx, teamId, taskListId, leadName, style } = opts;
+	const sessionTeamId = ctx.sessionManager.getSessionId();
 	const effectiveTlId = taskListId ?? teamId;
 	const teamsRoot = getTeamsRootDir();
 	const teamDir = getTeamDir(teamId);
@@ -63,6 +63,7 @@ export async function handleTeamIdCommand(opts: {
 	ctx.ui.notify(
 		[
 			`teamId: ${teamId}`,
+			...(teamId !== sessionTeamId ? [`sessionTeamId: ${sessionTeamId}`] : []),
 			`taskListId: ${effectiveTlId}`,
 			`leadName: ${leadName}`,
 			`style: ${style}`,
@@ -76,13 +77,14 @@ export async function handleTeamIdCommand(opts: {
 export async function handleTeamEnvCommand(opts: {
 	ctx: ExtensionCommandContext;
 	rest: string[];
+	teamId: string;
 	taskListId: string | null;
 	leadName: string;
 	style: TeamsStyle;
 	getTeamsExtensionEntryPath: () => string | null;
 	shellQuote: (v: string) => string;
 }): Promise<void> {
-	const { ctx, rest, taskListId, leadName, style, getTeamsExtensionEntryPath, shellQuote } = opts;
+	const { ctx, rest, teamId, taskListId, leadName, style, getTeamsExtensionEntryPath, shellQuote } = opts;
 
 	const nameRaw = rest[0];
 	if (!nameRaw) {
@@ -91,7 +93,6 @@ export async function handleTeamEnvCommand(opts: {
 	}
 
 	const name = sanitizeName(nameRaw);
-	const teamId = ctx.sessionManager.getSessionId();
 	const effectiveTlId = taskListId ?? teamId;
 	const teamsRoot = getTeamsRootDir();
 	const teamDir = getTeamDir(teamId);

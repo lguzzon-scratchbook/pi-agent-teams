@@ -72,11 +72,12 @@ export function registerTeamsTool(opts: {
 	pi: ExtensionAPI;
 	teammates: Map<string, TeammateRpc>;
 	spawnTeammate: SpawnTeammateFn;
+	getTeamId: (ctx: Parameters<SpawnTeammateFn>[0]) => string;
 	getTaskListId: () => string | null;
 	refreshTasks: () => Promise<void>;
 	renderWidget: () => void;
 }): void {
-	const { pi, teammates, spawnTeammate, getTaskListId, refreshTasks, renderWidget } = opts;
+	const { pi, teammates, spawnTeammate, getTeamId, getTaskListId, refreshTasks, renderWidget } = opts;
 
 	pi.registerTool({
 		name: "teams",
@@ -113,7 +114,7 @@ export function registerTeamsTool(opts: {
 			const spawnModel = modelOverride && modelOverride.length > 0 ? modelOverride : undefined;
 			const spawnThinking = params.thinking;
 
-			const teamId = ctx.sessionManager.getSessionId();
+			const teamId = getTeamId(ctx);
 			const teamDir = getTeamDir(teamId);
 			const taskListId = getTaskListId();
 			const cfg = await ensureTeamConfig(teamDir, {

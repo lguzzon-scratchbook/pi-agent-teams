@@ -140,7 +140,7 @@ export function runLeader(pi: ExtensionAPI): void {
 
 				await t.stop();
 				// Claude-style: unassign non-completed tasks on exit.
-				const teamId = ctx.sessionManager.getSessionId();
+				const teamId = currentTeamId ?? ctx.sessionManager.getSessionId();
 				const teamDir = getTeamDir(teamId);
 				const effectiveTlId = taskListId ?? teamId;
 				await unassignTasksForAgent(teamDir, effectiveTlId, name, reason);
@@ -167,7 +167,7 @@ export function runLeader(pi: ExtensionAPI): void {
 			.then(async () => {
 				// Only run hooks for the currently active team session.
 				if (!currentCtx) return;
-				if (currentCtx.sessionManager.getSessionId() !== invocation.teamId) return;
+				if (!currentTeamId || currentTeamId !== invocation.teamId) return;
 
 				const res = await runTeamsHook({ invocation, cwd: currentCtx.cwd });
 				if (!res.ran) return;
@@ -335,7 +335,7 @@ export function runLeader(pi: ExtensionAPI): void {
 			childModelId = ctx.model.id;
 		}
 
-		const teamId = ctx.sessionManager.getSessionId();
+		const teamId = currentTeamId ?? ctx.sessionManager.getSessionId();
 		const teamDir = getTeamDir(teamId);
 		const teamSessionsDir = getTeamSessionsDir(teamDir);
 		const session = await createSessionForTeammate(ctx, mode, teamSessionsDir);
@@ -353,7 +353,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		renderWidget();
 
 		// On crash/close, unassign tasks like Claude.
-		const leaderSessionId = teamId;
+		const leaderTeamId = teamId;
 		t.onClose((code) => {
 			try {
 				teammateEventUnsubs.get(name)?.();
@@ -364,8 +364,8 @@ export function runLeader(pi: ExtensionAPI): void {
 			tracker.reset(name);
 			transcriptTracker.reset(name);
 
-			if (currentCtx?.sessionManager.getSessionId() !== leaderSessionId) return;
-			const effectiveTlId = taskListId ?? leaderSessionId;
+			if (currentTeamId !== leaderTeamId) return;
+			const effectiveTlId = taskListId ?? leaderTeamId;
 			void unassignTasksForAgent(
 				teamDir,
 				effectiveTlId,
@@ -598,13 +598,14 @@ export function runLeader(pi: ExtensionAPI): void {
 		pi,
 		teammates,
 		spawnTeammate,
+		getTeamId: (ctx) => currentTeamId ?? ctx.sessionManager.getSessionId(),
 		getTaskListId: () => taskListId,
 		refreshTasks,
 		renderWidget,
 	});
 
 	const openWidget = async (ctx: ExtensionCommandContext) => {
-		const teamId = ctx.sessionManager.getSessionId();
+		const teamId = currentTeamId ?? ctx.sessionManager.getSessionId();
 		const teamDir = getTeamDir(teamId);
 		const effectiveTlId = taskListId ?? teamId;
 		const leadName = teamConfig?.leadName ?? "team-lead";
@@ -663,7 +664,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		description: "Teams: open interactive widget panel",
 		handler: async (_args, ctx) => {
 			currentCtx = ctx;
-			currentTeamId = ctx.sessionManager.getSessionId();
+			if (!currentTeamId) currentTeamId = ctx.sessionManager.getSessionId();
 			await openWidget(ctx);
 		},
 	});
@@ -672,7 +673,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		description: "Teams: open interactive widget panel (alias for /team widget)",
 		handler: async (_args, ctx) => {
 			currentCtx = ctx;
-			currentTeamId = ctx.sessionManager.getSessionId();
+			if (!currentTeamId) currentTeamId = ctx.sessionManager.getSessionId();
 			await openWidget(ctx);
 		},
 	});
@@ -693,7 +694,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		description: "Teams: spawn comrades + coordinate via Claude-like task list",
 		handler: async (args, ctx) => {
 			currentCtx = ctx;
-			currentTeamId = ctx.sessionManager.getSessionId();
+			if (!currentTeamId) currentTeamId = ctx.sessionManager.getSessionId();
 
 			await handleTeamCommand({
 				args,
@@ -706,6 +707,10 @@ export function runLeader(pi: ExtensionAPI): void {
 				getTaskListId: () => taskListId,
 				setTaskListId: (id) => {
 					taskListId = id;
+				},
+				getActiveTeamId: () => currentTeamId ?? ctx.sessionManager.getSessionId(),
+				setActiveTeamId: (teamId) => {
+					currentTeamId = teamId;
 				},
 				pendingPlanApprovals,
 				getDelegateMode: () => delegateMode,
