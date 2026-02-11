@@ -36,9 +36,14 @@ teams({ action: "delegate", tasks: [{ text: "Implement auth", assignee: "alice" 
 teams({ action: "task_assign", taskId: "12", assignee: "alice" })
 teams({ action: "task_unassign", taskId: "12" })
 teams({ action: "task_set_status", taskId: "12", status: "completed" })
+teams({ action: "task_dep_add", taskId: "12", depId: "7" })
+teams({ action: "task_dep_ls", taskId: "12" })
+teams({ action: "message_dm", name: "alice", message: "Please re-check the failing test" })
+teams({ action: "message_broadcast", message: "Sync: finishing this milestone" })
+teams({ action: "message_steer", name: "alice", message: "Change plan: prioritize bug #402" })
 ```
 
-This spawns teammates as needed, creates tasks, assigns them, and can mutate existing tasks without slash commands. Options: `contextMode` ("fresh" or "branch"), `workspaceMode` ("shared" or "worktree").
+This spawns teammates as needed, creates tasks, assigns them, mutates dependencies/status/ownership, and sends team messages without slash commands. Options: `contextMode` ("fresh" or "branch"), `workspaceMode` ("shared" or "worktree").
 
 For more control, use `/team spawn`:
 

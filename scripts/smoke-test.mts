@@ -576,6 +576,8 @@ console.log("\n11. docs/help drift guard");
 		assert(readme.includes("/team attach <teamId>"), "README mentions /team attach");
 		assert(readme.includes("/team detach"), "README mentions /team detach");
 		assert(readme.includes("\"action\": \"task_assign\""), "README mentions teams tool task_assign action");
+		assert(readme.includes("\"action\": \"task_dep_add\""), "README mentions teams tool task_dep_add action");
+		assert(readme.includes("\"action\": \"message_broadcast\""), "README mentions teams tool message_broadcast action");
 		assert(readme.includes("task-centric view"), "README mentions panel task-centric view");
 		assert(readme.includes("task view: `c` complete"), "README mentions panel task mutations");
 		assert(readme.includes("`r` reassign"), "README mentions panel task reassignment");

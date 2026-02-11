@@ -5,19 +5,41 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { writeToMailbox } from "./mailbox.js";
 import { pickAgentNames, pickNamesFromPool, sanitizeName } from "./names.js";
 import { getTeamDir } from "./paths.js";
-import { taskAssignmentPayload } from "./protocol.js";
+import { TEAM_MAILBOX_NS, taskAssignmentPayload } from "./protocol.js";
 import { ensureTeamConfig } from "./team-config.js";
-import { getTeamsNamingRules, getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName } from "./teams-style.js";
-import { createTask, updateTask } from "./task-store.js";
+import { getTeamsNamingRules, getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
+import {
+	addTaskDependency,
+	createTask,
+	getTask,
+	isTaskBlocked,
+	listTasks,
+	removeTaskDependency,
+	updateTask,
+} from "./task-store.js";
 import type { TeammateRpc } from "./teammate-rpc.js";
 import type { ContextMode, WorkspaceMode, SpawnTeammateFn } from "./spawn-types.js";
 
 type TeamsToolDelegateTask = { text: string; assignee?: string };
 
-const TeamsActionSchema = StringEnum(["delegate", "task_assign", "task_unassign", "task_set_status"] as const, {
-	description: "Teams tool action.",
-	default: "delegate",
-});
+const TeamsActionSchema = StringEnum(
+	[
+		"delegate",
+		"task_assign",
+		"task_unassign",
+		"task_set_status",
+		"task_dep_add",
+		"task_dep_rm",
+		"task_dep_ls",
+		"message_dm",
+		"message_broadcast",
+		"message_steer",
+	] as const,
+	{
+		description: "Teams tool action.",
+		default: "delegate",
+	},
+);
 
 const TeamsTaskStatusSchema = StringEnum(["pending", "in_progress", "completed"] as const, {
 	description: "Task status for action=task_set_status.",
@@ -47,8 +69,11 @@ const TeamsToolParamsSchema = Type.Object({
 	action: Type.Optional(TeamsActionSchema),
 	tasks: Type.Optional(Type.Array(TeamsDelegateTaskSchema, { description: "Tasks to delegate (action=delegate)." })),
 	taskId: Type.Optional(Type.String({ description: "Task id for task mutation actions." })),
+	depId: Type.Optional(Type.String({ description: "Dependency task id for task_dep_add/task_dep_rm." })),
 	assignee: Type.Optional(Type.String({ description: "Assignee name for action=task_assign." })),
 	status: Type.Optional(TeamsTaskStatusSchema),
+	name: Type.Optional(Type.String({ description: "Teammate name for message_dm/message_steer." })),
+	message: Type.Optional(Type.String({ description: "Message body for messaging actions." })),
 	teammates: Type.Optional(
 		Type.Array(Type.String(), {
 			description: "Explicit comrade names to use/spawn. If omitted, uses existing or auto-generates.",
@@ -91,7 +116,7 @@ export function registerTeamsTool(opts: {
 		label: "Teams",
 		description: [
 			"Spawn comrade agents and delegate tasks. Each comrade is a child Pi process that executes work autonomously and reports back.",
-			"You can also mutate existing tasks (assign, unassign, set status) without user slash commands.",
+			"You can also mutate existing tasks (assign, unassign, set status, dependencies) and send team messages without user slash commands.",
 			"Provide a list of tasks with optional assignees; comrades are spawned automatically and assigned round-robin if unspecified.",
 			"Options: contextMode=branch (clone session context), workspaceMode=worktree (git worktree isolation).",
 			"Optional overrides: model='<provider>/<modelId>' and thinking (off|minimal|low|medium|high|xhigh).",
@@ -112,6 +137,7 @@ export function registerTeamsTool(opts: {
 				style: getTeamsStyleFromEnv(),
 			});
 			const style: TeamsStyle = cfg.style ?? getTeamsStyleFromEnv();
+			const strings = getTeamsStrings(style);
 
 			const refreshUi = async (): Promise<void> => {
 				await refreshTasks();
@@ -216,6 +242,170 @@ export function registerTeamsTool(opts: {
 				return {
 					content: [{ type: "text", text: `Assigned task #${updated.id} to ${formatMemberDisplayName(style, assignee)}` }],
 					details: { action, teamId, taskListId: effectiveTlId, taskId: updated.id, assignee },
+				};
+			}
+
+			if (action === "task_dep_add" || action === "task_dep_rm") {
+				const taskId = params.taskId?.trim();
+				const depId = params.depId?.trim();
+				if (!taskId || !depId) {
+					return {
+						content: [{ type: "text", text: `${action} requires taskId and depId` }],
+						details: { action, taskId, depId },
+					};
+				}
+
+				const res = action === "task_dep_add"
+					? await addTaskDependency(teamDir, effectiveTlId, taskId, depId)
+					: await removeTaskDependency(teamDir, effectiveTlId, taskId, depId);
+				if (!res.ok) {
+					return {
+						content: [{ type: "text", text: res.error }],
+						details: { action, taskId, depId, error: res.error },
+					};
+				}
+
+				await refreshUi();
+				return {
+					content: [{ type: "text", text: action === "task_dep_add" ? `Added dependency: #${taskId} depends on #${depId}` : `Removed dependency: #${taskId} no longer depends on #${depId}` }],
+					details: { action, teamId, taskListId: effectiveTlId, taskId, depId },
+				};
+			}
+
+			if (action === "task_dep_ls") {
+				const taskId = params.taskId?.trim();
+				if (!taskId) {
+					return {
+						content: [{ type: "text", text: "task_dep_ls requires taskId" }],
+						details: { action },
+					};
+				}
+
+				const task = await getTask(teamDir, effectiveTlId, taskId);
+				if (!task) {
+					return {
+						content: [{ type: "text", text: `Task not found: ${taskId}` }],
+						details: { action, taskId },
+					};
+				}
+				const blocked = task.status !== "completed" && (await isTaskBlocked(teamDir, effectiveTlId, task));
+				const all = await listTasks(teamDir, effectiveTlId);
+				const byId = new Map<string, (typeof all)[number]>();
+				for (const t of all) byId.set(t.id, t);
+
+				const lines: string[] = [];
+				lines.push(`#${task.id} ${task.subject}`);
+				lines.push(`${blocked ? "blocked" : "unblocked"} • deps:${task.blockedBy.length} • blocks:${task.blocks.length}`);
+				lines.push("");
+				lines.push("blockedBy:");
+				if (task.blockedBy.length === 0) {
+					lines.push("  (none)");
+				} else {
+					for (const id of task.blockedBy) {
+						const dep = byId.get(id) ?? (await getTask(teamDir, effectiveTlId, id));
+						lines.push(dep ? `  - #${id} ${dep.status} ${dep.subject}` : `  - #${id} (missing)`);
+					}
+				}
+				lines.push("");
+				lines.push("blocks:");
+				if (task.blocks.length === 0) {
+					lines.push("  (none)");
+				} else {
+					for (const id of task.blocks) {
+						const child = byId.get(id) ?? (await getTask(teamDir, effectiveTlId, id));
+						lines.push(child ? `  - #${id} ${child.status} ${child.subject}` : `  - #${id} (missing)`);
+					}
+				}
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: { action, teamId, taskListId: effectiveTlId, taskId, blocked },
+				};
+			}
+
+			if (action === "message_dm") {
+				const nameRaw = params.name?.trim();
+				const message = params.message?.trim();
+				if (!nameRaw || !message) {
+					return {
+						content: [{ type: "text", text: "message_dm requires name and message" }],
+						details: { action, name: nameRaw },
+					};
+				}
+				const name = sanitizeName(nameRaw);
+				await writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
+					from: cfg.leadName,
+					text: message,
+					timestamp: new Date().toISOString(),
+				});
+				return {
+					content: [{ type: "text", text: `DM queued for ${formatMemberDisplayName(style, name)}` }],
+					details: { action, teamId, name, mailboxNamespace: TEAM_MAILBOX_NS },
+				};
+			}
+
+			if (action === "message_broadcast") {
+				const message = params.message?.trim();
+				if (!message) {
+					return {
+						content: [{ type: "text", text: "message_broadcast requires message" }],
+						details: { action },
+					};
+				}
+				const recipients = new Set<string>();
+				for (const m of cfg.members) {
+					if (m.role === "worker") recipients.add(m.name);
+				}
+				for (const name of teammates.keys()) recipients.add(name);
+				const allTasks = await listTasks(teamDir, effectiveTlId);
+				for (const t of allTasks) {
+					if (t.owner && t.owner !== cfg.leadName) recipients.add(t.owner);
+				}
+				const names = Array.from(recipients).sort();
+				if (names.length === 0) {
+					return {
+						content: [{ type: "text", text: `No ${strings.memberTitle.toLowerCase()}s to broadcast to` }],
+						details: { action, recipients: [] },
+					};
+				}
+				const ts = new Date().toISOString();
+				await Promise.all(
+					names.map((name) =>
+						writeToMailbox(teamDir, TEAM_MAILBOX_NS, name, {
+							from: cfg.leadName,
+							text: message,
+							timestamp: ts,
+						}),
+					),
+				);
+				return {
+					content: [{ type: "text", text: `Broadcast queued for ${names.length} ${strings.memberTitle.toLowerCase()}(s): ${names.map((n) => formatMemberDisplayName(style, n)).join(", ")}` }],
+					details: { action, teamId, recipients: names, mailboxNamespace: TEAM_MAILBOX_NS },
+				};
+			}
+
+			if (action === "message_steer") {
+				const nameRaw = params.name?.trim();
+				const message = params.message?.trim();
+				if (!nameRaw || !message) {
+					return {
+						content: [{ type: "text", text: "message_steer requires name and message" }],
+						details: { action, name: nameRaw },
+					};
+				}
+				const name = sanitizeName(nameRaw);
+				const rpc = teammates.get(name);
+				if (!rpc) {
+					return {
+						content: [{ type: "text", text: `Unknown ${strings.memberTitle.toLowerCase()}: ${name}` }],
+						details: { action, name },
+					};
+				}
+				await rpc.steer(message);
+				renderWidget();
+				return {
+					content: [{ type: "text", text: `Steering sent to ${formatMemberDisplayName(style, name)}` }],
+					details: { action, teamId, name },
 				};
 			}
 
