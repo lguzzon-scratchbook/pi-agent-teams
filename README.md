@@ -154,6 +154,8 @@ Or let the model drive it with the delegate tool:
 | `plan_reject` | `name` | Reject pending plan (`feedback` optional). |
 | `hooks_policy_get` | _(none)_ | Read team hooks policy (configured + effective with env fallback). |
 | `hooks_policy_set` | one or more of: `hookFailureAction`, `hookMaxReopensPerTask`, `hookFollowupOwner` | Update team hooks policy at runtime (`hooksPolicyReset=true` clears team overrides first). |
+| `model_policy_get` | _(none)_ | Inspect teammate model policy and default inheritance behavior for the current leader model. |
+| `model_policy_check` | optional `model` | Validate a model override before spawning (`<provider>/<modelId>` or `<modelId>`). |
 
 Example calls:
 
@@ -165,6 +167,8 @@ Example calls:
 { "action": "plan_approve", "name": "alice" }
 { "action": "hooks_policy_get" }
 { "action": "hooks_policy_set", "hookFailureAction": "reopen_followup", "hookMaxReopensPerTask": 2, "hookFollowupOwner": "member" }
+{ "action": "model_policy_get" }
+{ "action": "model_policy_check", "model": "openai-codex/gpt-5.1-codex-mini" }
 ```
 
 ## Commands
@@ -210,6 +214,7 @@ Model inheritance note:
 
 - If the leader is running a deprecated model id (e.g. Sonnet 4 non-4.5 variants), teammates will **not** inherit that id by default.
 - Explicit deprecated `--model` overrides are rejected.
+- Agents can introspect/check this at runtime via `teams` actions: `{ "action": "model_policy_get" }` and `{ "action": "model_policy_check", "model": "..." }`.
 
 ### Panel shortcuts (`/tw` / `/team panel`)
 

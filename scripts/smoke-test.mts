@@ -31,7 +31,7 @@ import {
 } from "../extensions/teams/task-store.js";
 import { ensureTeamConfig, loadTeamConfig, upsertMember, setMemberStatus, updateTeamHooksPolicy } from "../extensions/teams/team-config.js";
 import { sanitizeName } from "../extensions/teams/names.js";
-import { isDeprecatedTeammateModelId } from "../extensions/teams/model-policy.js";
+import { formatProviderModel, isDeprecatedTeammateModelId, resolveTeammateModelSelection } from "../extensions/teams/model-policy.js";
 import { getTeamsNamingRules, getTeamsStrings } from "../extensions/teams/teams-style.js";
 import {
 	getTeamsHookFailureAction,
@@ -116,6 +116,49 @@ assert(
 assert(!isDeprecatedTeammateModelId("claude-sonnet-4-5"), "does not block sonnet-4-5");
 assert(!isDeprecatedTeammateModelId("claude-sonnet-4.5"), "does not block sonnet-4.5");
 assert(!isDeprecatedTeammateModelId("gpt-5.1-codex-mini"), "keeps current models allowed");
+
+const modelResolvedExplicit = resolveTeammateModelSelection({
+	modelOverride: "openai-codex/gpt-5.1-codex-mini",
+	leaderProvider: "anthropic",
+	leaderModelId: "claude-sonnet-4-5",
+});
+assert(modelResolvedExplicit.ok, "resolveTeammateModelSelection accepts provider/model override");
+if (modelResolvedExplicit.ok) {
+	assertEq(modelResolvedExplicit.value.source, "override", "explicit override source");
+	assertEq(formatProviderModel(modelResolvedExplicit.value.provider, modelResolvedExplicit.value.modelId), "openai-codex/gpt-5.1-codex-mini", "explicit override keeps provider/model");
+}
+
+const modelResolvedModelOnly = resolveTeammateModelSelection({
+	modelOverride: "gpt-5.1-codex-mini",
+	leaderProvider: "openai-codex",
+	leaderModelId: "gpt-5.1-codex-mini",
+});
+assert(modelResolvedModelOnly.ok, "resolveTeammateModelSelection accepts model-only override");
+if (modelResolvedModelOnly.ok) {
+	assertEq(formatProviderModel(modelResolvedModelOnly.value.provider, modelResolvedModelOnly.value.modelId), "openai-codex/gpt-5.1-codex-mini", "model-only override inherits leader provider");
+}
+
+const modelResolvedInvalid = resolveTeammateModelSelection({ modelOverride: "openai-codex/" });
+assert(!modelResolvedInvalid.ok, "resolveTeammateModelSelection rejects invalid provider/model override");
+if (!modelResolvedInvalid.ok) {
+	assertEq(modelResolvedInvalid.reason, "invalid_override", "invalid override reason");
+}
+
+const modelResolvedDeprecated = resolveTeammateModelSelection({ modelOverride: "claude-sonnet-4" });
+assert(!modelResolvedDeprecated.ok, "resolveTeammateModelSelection rejects deprecated override");
+if (!modelResolvedDeprecated.ok) {
+	assertEq(modelResolvedDeprecated.reason, "deprecated_override", "deprecated override reason");
+}
+
+const modelResolvedDeprecatedLeader = resolveTeammateModelSelection({
+	leaderProvider: "anthropic",
+	leaderModelId: "claude-sonnet-4-20250514",
+});
+assert(modelResolvedDeprecatedLeader.ok, "resolveTeammateModelSelection handles deprecated leader model fallback");
+if (modelResolvedDeprecatedLeader.ok) {
+	assertEq(modelResolvedDeprecatedLeader.value.source, "default", "deprecated leader model is not inherited");
+	assertEq(formatProviderModel(modelResolvedDeprecatedLeader.value.provider, modelResolvedDeprecatedLeader.value.modelId), null, "deprecated leader fallback has no explicit model");
+}
 
 // ── 2. fs-lock ───────────────────────────────────────────────────────
 console.log("\n2. fs-lock.withLock");
@@ -696,6 +739,8 @@ console.log("\n11. docs/help drift guard");
 		assert(readme.includes("\"action\": \"plan_approve\""), "README mentions teams tool plan_approve action");
 		assert(readme.includes("\"action\": \"hooks_policy_get\""), "README mentions teams tool hooks_policy_get action");
 		assert(readme.includes("\"action\": \"hooks_policy_set\""), "README mentions teams tool hooks_policy_set action");
+		assert(readme.includes("\"action\": \"model_policy_get\""), "README mentions teams tool model_policy_get action");
+		assert(readme.includes("\"action\": \"model_policy_check\""), "README mentions teams tool model_policy_check action");
 		assert(readme.includes("PI_TEAMS_HOOKS_FAILURE_ACTION"), "README mentions hook failure action policy");
 		assert(readme.includes("PI_TEAMS_HOOKS_MAX_REOPENS_PER_TASK"), "README mentions hook reopen cap policy");
 		assert(readme.includes("PI_TEAMS_HOOK_CONTEXT_JSON"), "README mentions hook context json contract");

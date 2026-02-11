@@ -15,7 +15,7 @@ import { ensureWorktreeCwd } from "./worktree.js";
 import { ActivityTracker, TranscriptTracker } from "./activity-tracker.js";
 import { openInteractiveWidget } from "./teams-panel.js";
 import { createTeamsWidget } from "./teams-widget.js";
-import { isDeprecatedTeammateModelId } from "./model-policy.js";
+import { resolveTeammateModelSelection, formatProviderModel } from "./model-policy.js";
 import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 import { pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
 import {
@@ -453,49 +453,15 @@ export function runLeader(pi: ExtensionAPI): void {
 
 		// Spawn-time model / thinking overrides (optional).
 		const thinkingLevel = opts.thinking ?? pi.getThinkingLevel();
-		let childProvider: string | undefined;
-		let childModelId: string | undefined;
 
-		const modelOverrideRaw = opts.model?.trim();
-		if (modelOverrideRaw) {
-			const slashIdx = modelOverrideRaw.indexOf("/");
-			if (slashIdx >= 0) {
-				const provider = modelOverrideRaw.slice(0, slashIdx).trim();
-				const id = modelOverrideRaw.slice(slashIdx + 1).trim();
-				if (!provider || !id) {
-					return {
-						ok: false,
-						error: `Invalid model override '${modelOverrideRaw}'. Expected <provider>/<modelId>.`,
-					};
-				}
-				if (isDeprecatedTeammateModelId(id)) {
-					return {
-						ok: false,
-						error: `Model override '${modelOverrideRaw}' is deprecated. Choose a current model id.`,
-					};
-				}
-				childProvider = provider;
-				childModelId = id;
-			} else {
-				if (isDeprecatedTeammateModelId(modelOverrideRaw)) {
-					return {
-						ok: false,
-						error: `Model override '${modelOverrideRaw}' is deprecated. Choose a current model id.`,
-					};
-				}
-				childModelId = modelOverrideRaw;
-				childProvider = ctx.model?.provider;
-				if (!childProvider) {
-					warnings.push(
-						`Model override '${modelOverrideRaw}' provided without a provider. ` +
-							`Teammate will use its default provider; use <provider>/<modelId> to force one.`,
-					);
-				}
-			}
-		} else if (ctx.model && !isDeprecatedTeammateModelId(ctx.model.id)) {
-			childProvider = ctx.model.provider;
-			childModelId = ctx.model.id;
-		}
+		const modelResolution = resolveTeammateModelSelection({
+			modelOverride: opts.model,
+			leaderProvider: ctx.model?.provider,
+			leaderModelId: ctx.model?.id,
+		});
+		if (!modelResolution.ok) return { ok: false, error: modelResolution.error };
+		const { provider: childProvider, modelId: childModelId, warnings: modelWarnings } = modelResolution.value;
+		warnings.push(...modelWarnings);
 
 		const teamId = currentTeamId ?? ctx.sessionManager.getSessionId();
 		const teamDir = getTeamDir(teamId);
@@ -614,6 +580,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		}
 
 		await ensureTeamConfig(teamDir, { teamId, taskListId: taskListId ?? teamId, leadName: "team-lead", style });
+		const childModel = formatProviderModel(childProvider, childModelId);
 		await upsertMember(teamDir, {
 			name,
 			role: "worker",
@@ -624,7 +591,7 @@ export function runLeader(pi: ExtensionAPI): void {
 				workspaceMode,
 				sessionName,
 				thinkingLevel,
-				...(childModelId ? { model: childProvider ? `${childProvider}/${childModelId}` : childModelId } : {}),
+				...(childModel ? { model: childModel } : {}),
 			},
 		});
 

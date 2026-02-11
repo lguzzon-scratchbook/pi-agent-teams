@@ -10,6 +10,12 @@ import { TEAM_MAILBOX_NS, taskAssignmentPayload } from "./protocol.js";
 import { ensureTeamConfig, setMemberStatus, updateTeamHooksPolicy } from "./team-config.js";
 import { getTeamsNamingRules, getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
 import {
+	formatProviderModel,
+	isDeprecatedTeammateModelId,
+	resolveTeammateModelSelection,
+	type TeammateModelSource,
+} from "./model-policy.js";
+import {
 	getTeamsHookFailureAction,
 	getTeamsHookFollowupOwnerPolicy,
 	getTeamsHookMaxReopensPerTask,
@@ -31,6 +37,12 @@ import type { ContextMode, WorkspaceMode, SpawnTeammateFn } from "./spawn-types.
 
 type TeamsToolDelegateTask = { text: string; assignee?: string };
 
+function describeModelSource(source: TeammateModelSource): string {
+	if (source === "override") return "override";
+	if (source === "inherit_leader") return "leader";
+	return "teammate-default";
+}
+
 const TeamsActionSchema = StringEnum(
 	[
 		"delegate",
@@ -51,6 +63,8 @@ const TeamsActionSchema = StringEnum(
 		"plan_reject",
 		"hooks_policy_get",
 		"hooks_policy_set",
+		"model_policy_get",
+		"model_policy_check",
 	] as const,
 	{
 		description: "Teams tool action.",
@@ -152,7 +166,7 @@ export function registerTeamsTool(opts: {
 		label: "Teams",
 		description: [
 			"Spawn comrade agents and delegate tasks. Each comrade is a child Pi process that executes work autonomously and reports back.",
-			"You can also mutate existing tasks (assign, unassign, set status, dependencies), send team messages, run teammate lifecycle actions, and manage hooks remediation policy without user slash commands.",
+			"You can also mutate existing tasks (assign, unassign, set status, dependencies), send team messages, run teammate lifecycle actions, and manage hooks/model policy without user slash commands.",
 			"Provide a list of tasks with optional assignees; comrades are spawned automatically and assigned round-robin if unspecified.",
 			"Options: contextMode=branch (clone session context), workspaceMode=worktree (git worktree isolation).",
 			"Optional overrides: model='<provider>/<modelId>' and thinking (off|minimal|low|medium|high|xhigh).",
@@ -693,6 +707,114 @@ export function registerTeamsTool(opts: {
 				return {
 					content: [{ type: "text", text: `Rejected plan for ${formatMemberDisplayName(style, name)}: ${feedback}` }],
 					details: { action, teamId, name, requestId: pending.requestId, taskId: pending.taskId, feedback },
+				};
+			}
+
+			if (action === "model_policy_get") {
+				const leaderProvider = ctx.model?.provider;
+				const leaderModelId = ctx.model?.id;
+				const leaderModel = formatProviderModel(leaderProvider, leaderModelId);
+				const leaderModelDeprecated = leaderModelId ? isDeprecatedTeammateModelId(leaderModelId) : false;
+				const resolved = resolveTeammateModelSelection({
+					leaderProvider,
+					leaderModelId,
+				});
+				if (!resolved.ok) {
+					return {
+						content: [{ type: "text", text: `Model policy resolution failed: ${resolved.error}` }],
+						details: {
+							action,
+							teamId,
+							error: resolved.error,
+							reason: resolved.reason,
+						},
+					};
+				}
+
+				const effectiveModel = formatProviderModel(resolved.value.provider, resolved.value.modelId);
+				const lines: string[] = [
+					"Model policy",
+					"deprecated model family: claude-sonnet-4* (except claude-sonnet-4-5 / claude-sonnet-4.5)",
+					`leader model: ${leaderModel ?? "(unknown)"}`,
+					`leader model deprecated: ${leaderModelDeprecated ? "yes" : "no"}`,
+					`default teammate selection: source=${describeModelSource(resolved.value.source)}, model=${effectiveModel ?? "(teammate default)"}`,
+					"override forms: '<provider>/<modelId>' or '<modelId>' (inherits leader provider when available)",
+				];
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: {
+						action,
+						teamId,
+						deprecatedPolicy: {
+							family: "claude-sonnet-4",
+							allowedExceptions: ["claude-sonnet-4-5", "claude-sonnet-4.5"],
+						},
+						leader: {
+							provider: leaderProvider,
+							modelId: leaderModelId,
+							model: leaderModel,
+							deprecated: leaderModelDeprecated,
+						},
+						defaultSelection: {
+							source: resolved.value.source,
+							provider: resolved.value.provider,
+							modelId: resolved.value.modelId,
+							model: effectiveModel,
+							warnings: resolved.value.warnings,
+						},
+					},
+				};
+			}
+
+			if (action === "model_policy_check") {
+				const modelInput = params.model?.trim();
+				const resolved = resolveTeammateModelSelection({
+					modelOverride: modelInput,
+					leaderProvider: ctx.model?.provider,
+					leaderModelId: ctx.model?.id,
+				});
+
+				if (!resolved.ok) {
+					const lines = [
+						"Model policy check: rejected",
+						`input: ${modelInput ?? "(none)"}`,
+						`reason: ${resolved.error}`,
+					];
+					return {
+						content: [{ type: "text", text: lines.join("\n") }],
+						details: {
+							action,
+							teamId,
+							accepted: false,
+							input: modelInput,
+							error: resolved.error,
+							reason: resolved.reason,
+						},
+					};
+				}
+
+				const resolvedModel = formatProviderModel(resolved.value.provider, resolved.value.modelId);
+				const lines = [
+					"Model policy check: accepted",
+					`input: ${modelInput ?? "(none)"}`,
+					`source: ${describeModelSource(resolved.value.source)}`,
+					`resolved model: ${resolvedModel ?? "(teammate default)"}`,
+				];
+				for (const warning of resolved.value.warnings) lines.push(`warning: ${warning}`);
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: {
+						action,
+						teamId,
+						accepted: true,
+						input: modelInput,
+						source: resolved.value.source,
+						provider: resolved.value.provider,
+						modelId: resolved.value.modelId,
+						model: resolvedModel,
+						warnings: resolved.value.warnings,
+					},
 				};
 			}
 

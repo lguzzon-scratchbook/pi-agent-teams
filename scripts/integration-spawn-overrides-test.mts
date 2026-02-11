@@ -364,6 +364,16 @@ try {
 	assert(messagesContain(invalidModelEvents, "invalid model override"), "expected invalid model override notification");
 	console.log("OK: invalid model override rejected");
 
+	// 5) Deprecated model override is rejected by model policy.
+	const beforeDeprecatedModel = notifications.length;
+	await sendPrompt("/team spawn erin fresh --model anthropic/claude-sonnet-4 --thinking low");
+	await sleep(150);
+	const deprecatedModelEvents = notifications.slice(beforeDeprecatedModel);
+
+	assert(findMember(teamDir, "erin") === null, "erin should not be spawned for deprecated model override");
+	assert(messagesContain(deprecatedModelEvents, "deprecated"), "expected deprecated model override notification");
+	console.log("OK: deprecated model override rejected");
+
 	// Shutdown spawned teammates.
 	await sendPrompt("/team shutdown");
 	await waitForMemberStatus("alice", "offline");

@@ -49,6 +49,8 @@ Use the **`teams` tool** (LLM-callable) for delegation, task/messaging mutations
 | `plan_approve` / `plan_reject` | `name` | Resolve pending plan approvals (`feedback` optional for reject). |
 | `hooks_policy_get` | _(none)_ | Read team hooks policy (configured + effective). |
 | `hooks_policy_set` | one or more: `hookFailureAction`, `hookMaxReopensPerTask`, `hookFollowupOwner` | Update team hooks policy at runtime (`hooksPolicyReset=true` clears team overrides first). |
+| `model_policy_get` | _(none)_ | Inspect teammate model policy and current leader inheritance behavior. |
+| `model_policy_check` | optional `model` | Validate a model override before spawn (`<provider>/<modelId>` or `<modelId>`). |
 
 Examples:
 
@@ -61,6 +63,8 @@ teams({ action: "member_kill", name: "alice" })
 teams({ action: "plan_reject", name: "alice", feedback: "Include rollback strategy" })
 teams({ action: "hooks_policy_get" })
 teams({ action: "hooks_policy_set", hookFailureAction: "reopen_followup", hookMaxReopensPerTask: 2, hookFollowupOwner: "member" })
+teams({ action: "model_policy_get" })
+teams({ action: "model_policy_check", model: "openai-codex/gpt-5.1-codex-mini" })
 ```
 
 This covers most day-to-day orchestration without slash commands. For nuanced/manual control, use `/team ...` commands directly.

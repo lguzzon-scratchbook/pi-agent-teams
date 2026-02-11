@@ -122,6 +122,7 @@ Legend: ✅ implemented • 🟡 partial • ❌ missing
    - Implemented: agent-invocable dependency/messaging actions via `teams` tool (`task_dep_add|rm|ls`, `message_dm|broadcast|steer`).
    - Implemented: agent-invocable lifecycle actions via `teams` tool (`member_spawn|shutdown|kill|prune`).
    - Implemented: agent-invocable governance actions via `teams` tool (`plan_approve|plan_reject`).
+   - Implemented: agent-invocable model policy introspection/check actions via `teams` tool (`model_policy_get|model_policy_check`) to validate spawn overrides before execution.
    - Next: optional tmux split-pane integration and deeper dependency/task editing flows in panel.
 
 12) **Join/attach flow** 🟡 (partial)
