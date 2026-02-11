@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getTeamsRootDir } from "./paths.js";
+import { assessAttachClaimFreshness, readTeamAttachClaim } from "./team-attach-claim.js";
 import { loadTeamConfig } from "./team-config.js";
 import type { TeamsStyle } from "./teams-style.js";
 
@@ -13,6 +14,9 @@ export interface DiscoveredTeam {
 	workerCount: number;
 	onlineWorkerCount: number;
 	updatedAt: string;
+	attachedBySessionId?: string;
+	attachClaimStale?: boolean;
+	attachHeartbeatAt?: string;
 }
 
 export async function listDiscoveredTeams(teamsRoot = getTeamsRootDir()): Promise<DiscoveredTeam[]> {
@@ -33,6 +37,8 @@ export async function listDiscoveredTeams(teamsRoot = getTeamsRootDir()): Promis
 
 		const workers = cfg.members.filter((m) => m.role === "worker");
 		const onlineWorkerCount = workers.filter((m) => m.status === "online").length;
+		const attachClaim = await readTeamAttachClaim(teamDir);
+		const freshness = attachClaim ? assessAttachClaimFreshness(attachClaim) : null;
 		out.push({
 			teamId: cfg.teamId,
 			teamDir,
@@ -42,6 +48,9 @@ export async function listDiscoveredTeams(teamsRoot = getTeamsRootDir()): Promis
 			workerCount: workers.length,
 			onlineWorkerCount,
 			updatedAt: cfg.updatedAt,
+			attachedBySessionId: attachClaim?.holderSessionId,
+			attachClaimStale: freshness?.isStale,
+			attachHeartbeatAt: attachClaim?.heartbeatAt,
 		});
 	}
 

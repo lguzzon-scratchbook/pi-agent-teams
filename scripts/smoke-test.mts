@@ -34,6 +34,12 @@ import { sanitizeName } from "../extensions/teams/names.js";
 import { getTeamsNamingRules, getTeamsStrings } from "../extensions/teams/teams-style.js";
 import { runTeamsHook } from "../extensions/teams/hooks.js";
 import { listDiscoveredTeams } from "../extensions/teams/team-discovery.js";
+import {
+	acquireTeamAttachClaim,
+	assessAttachClaimFreshness,
+	heartbeatTeamAttachClaim,
+	releaseTeamAttachClaim,
+} from "../extensions/teams/team-attach-claim.js";
 import { getTeamHelpText } from "../extensions/teams/leader-team-command.js";
 import {
 	TEAM_MAILBOX_NS,
@@ -519,8 +525,8 @@ console.log("\n9. teams-hooks (quality gates)");
 	else process.env.PI_TEAMS_HOOKS_ENABLED = prevEnabled;
 }
 
-// ── 10. team discovery (attach flow) ────────────────────────────────
-console.log("\n10. team discovery (attach flow)");
+// ── 10. team discovery + attach claims ──────────────────────────────
+console.log("\n10. team discovery + attach claims");
 {
 	const discoverRoot = path.join(tmpRoot, "discover-root");
 	const aDir = path.join(discoverRoot, "team-a");
@@ -545,6 +551,30 @@ console.log("\n10. team discovery (attach flow)");
 		status: "online",
 	});
 
+	const claimA = await acquireTeamAttachClaim(aDir, "session-a");
+	assert(claimA.ok, "acquireTeamAttachClaim succeeds for first claimant");
+	const claimB = await acquireTeamAttachClaim(aDir, "session-b");
+	assert(!claimB.ok, "acquireTeamAttachClaim blocks second claimant without force");
+	const heartbeatA = await heartbeatTeamAttachClaim(aDir, "session-a");
+	assertEq(heartbeatA, "updated", "heartbeat updates owner claim");
+	const heartbeatB = await heartbeatTeamAttachClaim(aDir, "session-b");
+	assertEq(heartbeatB, "not_owner", "heartbeat rejects non-owner");
+	const releaseB = await releaseTeamAttachClaim(aDir, "session-b");
+	assertEq(releaseB, "not_owner", "release rejects non-owner");
+	const releaseA = await releaseTeamAttachClaim(aDir, "session-a");
+	assertEq(releaseA, "released", "release succeeds for owner");
+
+	const staleCheck = assessAttachClaimFreshness(
+		{
+			holderSessionId: "session-stale",
+			claimedAt: new Date(Date.now() - 120_000).toISOString(),
+			heartbeatAt: new Date(Date.now() - 90_000).toISOString(),
+			pid: 123,
+		},
+	);
+	assert(staleCheck.isStale, "assessAttachClaimFreshness marks old heartbeat as stale");
+
+	await acquireTeamAttachClaim(bDir, "session-c");
 	const discovered = await listDiscoveredTeams(discoverRoot);
 	assert(discovered.some((t) => t.teamId === "team-a"), "discovers first team");
 	assert(discovered.some((t) => t.teamId === "team-b"), "discovers second team");
@@ -555,6 +585,7 @@ console.log("\n10. team discovery (attach flow)");
 		assertEq(b.taskListId, "tasks-b", "discovered taskListId");
 		assertEq(b.style, "pirate", "discovered style");
 		assertEq(b.onlineWorkerCount, 1, "discovered online worker count");
+		assertEq(b.attachedBySessionId, "session-c", "discovered attach claim owner");
 	}
 }
 
@@ -564,7 +595,7 @@ console.log("\n11. docs/help drift guard");
 	const help = getTeamHelpText();
 	assert(help.includes("/team style list"), "help mentions /team style list");
 	assert(help.includes("/team style init"), "help mentions /team style init");
-	assert(help.includes("/team attach <teamId>"), "help mentions /team attach");
+	assert(help.includes("/team attach <teamId> [--claim]"), "help mentions /team attach claim mode");
 	assert(help.includes("/team detach"), "help mentions /team detach");
 
 	const readmePath = path.join(process.cwd(), "README.md");
@@ -573,7 +604,7 @@ console.log("\n11. docs/help drift guard");
 	} else {
 		const readme = fs.readFileSync(readmePath, "utf8");
 		assert(readme.includes("/team style list"), "README mentions /team style list");
-		assert(readme.includes("/team attach <teamId>"), "README mentions /team attach");
+		assert(readme.includes("/team attach <teamId> [--claim]"), "README mentions /team attach claim mode");
 		assert(readme.includes("/team detach"), "README mentions /team detach");
 		assert(readme.includes("\"action\": \"task_assign\""), "README mentions teams tool task_assign action");
 		assert(readme.includes("\"action\": \"task_dep_add\""), "README mentions teams tool task_dep_add action");

@@ -99,7 +99,7 @@ Or drive it manually:
 /team spawn bob branch worktree            # spawn with leader context + isolated worktree
 
 /team attach list                          # discover existing teams under ~/.pi/agent/teams
-/team attach <teamId>                      # attach this session to an existing team workspace
+/team attach <teamId> [--claim]            # attach this session to an existing team workspace (force takeover with --claim)
 /team detach                               # return to this session's own team
 
 /team task add alice: Fix failing tests    # create a task and assign it to alice
@@ -183,7 +183,7 @@ All management commands live under `/team`.
 | `/team list` | List teammates and their status |
 | `/team panel` | Interactive widget panel (same as `/tw`) |
 | `/team attach list` | Discover existing team workspaces under `<teamsRoot>` |
-| `/team attach <teamId>` | Attach this session to an existing team workspace |
+| `/team attach <teamId> [--claim]` | Attach this session to an existing team workspace (`--claim` force-takes over an active claim) |
 | `/team detach` | Return to this session's own team workspace |
 | `/team style` | Show current style + usage |
 | `/team style list` | List available styles (built-in + custom) |

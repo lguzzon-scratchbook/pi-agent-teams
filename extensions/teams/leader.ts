@@ -10,6 +10,7 @@ import { createTask, listTasks, unassignTasksForAgent, updateTask, type TeamTask
 import { TeammateRpc } from "./teammate-rpc.js";
 import { ensureTeamConfig, loadTeamConfig, setMemberStatus, upsertMember, type TeamConfig } from "./team-config.js";
 import { getTeamDir } from "./paths.js";
+import { heartbeatTeamAttachClaim, releaseTeamAttachClaim } from "./team-attach-claim.js";
 import { ensureWorktreeCwd } from "./worktree.js";
 import { ActivityTracker, TranscriptTracker } from "./activity-tracker.js";
 import { openInteractiveWidget } from "./teams-panel.js";
@@ -116,12 +117,40 @@ export function runLeader(pi: ExtensionAPI): void {
 	let isStopping = false;
 	let delegateMode = process.env.PI_TEAMS_DELEGATE_MODE === "1";
 	let style: TeamsStyle = getTeamsStyleFromEnv();
+	let lastAttachClaimHeartbeatMs = 0;
 
 	const stopLoops = () => {
 		if (refreshTimer) clearInterval(refreshTimer);
 		if (inboxTimer) clearInterval(inboxTimer);
 		refreshTimer = null;
 		inboxTimer = null;
+	};
+
+	const releaseActiveAttachClaim = async (ctx: ExtensionContext): Promise<void> => {
+		if (!currentTeamId) return;
+		const sessionTeamId = ctx.sessionManager.getSessionId();
+		if (currentTeamId === sessionTeamId) return;
+		await releaseTeamAttachClaim(getTeamDir(currentTeamId), sessionTeamId);
+	};
+
+	const heartbeatActiveAttachClaim = async (ctx: ExtensionContext): Promise<void> => {
+		if (!currentTeamId) return;
+		const sessionTeamId = ctx.sessionManager.getSessionId();
+		if (currentTeamId === sessionTeamId) return;
+		const nowMs = Date.now();
+		if (nowMs - lastAttachClaimHeartbeatMs < 5_000) return;
+		lastAttachClaimHeartbeatMs = nowMs;
+		const result = await heartbeatTeamAttachClaim(getTeamDir(currentTeamId), sessionTeamId);
+		if (result === "updated") return;
+
+		ctx.ui.notify(
+			`Attach claim for team ${currentTeamId} is no longer owned by this session; detaching to session team.`,
+			"warning",
+		);
+		currentTeamId = sessionTeamId;
+		taskListId = sessionTeamId;
+		await refreshTasks();
+		renderWidget();
 	};
 
 	const stopAllTeammates = async (ctx: ExtensionContext, reason: string) => {
@@ -502,6 +531,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		// Keep the task list aligned with the active session. If you want a shared namespace,
 		// use `/team task use <taskListId>` after switching.
 		taskListId = currentTeamId;
+		lastAttachClaimHeartbeatMs = 0;
 
 		// Claude-style: a persisted team config file.
 		await ensureTeamConfig(getTeamDir(currentTeamId), {
@@ -520,6 +550,7 @@ export function runLeader(pi: ExtensionAPI): void {
 			if (refreshInFlight) return;
 			refreshInFlight = true;
 			try {
+				await heartbeatActiveAttachClaim(ctx);
 				await refreshTasks();
 				renderWidget();
 			} finally {
@@ -541,6 +572,7 @@ export function runLeader(pi: ExtensionAPI): void {
 
 	pi.on("session_switch", async (_event, ctx) => {
 		if (currentCtx) {
+			await releaseActiveAttachClaim(currentCtx);
 			const strings = getTeamsStrings(style);
 			await stopAllTeammates(currentCtx, `The ${strings.teamNoun} is dissolved — leader moved on`);
 		}
@@ -551,6 +583,7 @@ export function runLeader(pi: ExtensionAPI): void {
 		// Keep the task list aligned with the active session. If you want a shared namespace,
 		// use `/team task use <taskListId>` after switching.
 		taskListId = currentTeamId;
+		lastAttachClaimHeartbeatMs = 0;
 
 		await ensureTeamConfig(getTeamDir(currentTeamId), {
 			teamId: currentTeamId,
@@ -568,6 +601,7 @@ export function runLeader(pi: ExtensionAPI): void {
 			if (refreshInFlight) return;
 			refreshInFlight = true;
 			try {
+				await heartbeatActiveAttachClaim(ctx);
 				await refreshTasks();
 				renderWidget();
 			} finally {
@@ -589,6 +623,7 @@ export function runLeader(pi: ExtensionAPI): void {
 
 	pi.on("session_shutdown", async () => {
 		if (!currentCtx) return;
+		await releaseActiveAttachClaim(currentCtx);
 		stopLoops();
 		const strings = getTeamsStrings(style);
 		await stopAllTeammates(currentCtx, `The ${strings.teamNoun} is over`);

@@ -1,9 +1,23 @@
 import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { getTeamDir } from "./paths.js";
+import {
+	acquireTeamAttachClaim,
+	releaseTeamAttachClaim,
+	TEAM_ATTACH_CLAIM_STALE_MS,
+} from "./team-attach-claim.js";
 import { loadTeamConfig } from "./team-config.js";
 import { listDiscoveredTeams } from "./team-discovery.js";
 import type { TeammateRpc } from "./teammate-rpc.js";
 import type { TeamsStyle } from "./teams-style.js";
+
+function formatClaimAge(heartbeatAt?: string): string {
+	if (!heartbeatAt) return "unknown";
+	const heartbeatMs = Date.parse(heartbeatAt);
+	if (!Number.isFinite(heartbeatMs)) return "unknown";
+	const ageMs = Math.max(0, Date.now() - heartbeatMs);
+	const ageSec = Math.floor(ageMs / 1000);
+	return `${ageSec}s`;
+}
 
 export async function handleTeamAttachCommand(opts: {
 	ctx: ExtensionCommandContext;
@@ -30,14 +44,14 @@ export async function handleTeamAttachCommand(opts: {
 		renderWidget,
 	} = opts;
 
-	const arg = rest[0];
+	const tokens = rest.map((t) => t.trim()).filter((t) => t.length > 0);
 	const activeTeamId = getActiveTeamId();
-	if (!arg || arg === "help") {
+	if (tokens.length === 0 || tokens[0] === "help") {
 		ctx.ui.notify(
 			[
 				"Usage:",
 				"  /team attach list",
-				"  /team attach <teamId>",
+				"  /team attach <teamId> [--claim]",
 				"",
 				`current: ${activeTeamId}${activeTeamId === defaultTeamId ? " (session)" : " (attached)"}`,
 				`session: ${defaultTeamId}`,
@@ -47,7 +61,7 @@ export async function handleTeamAttachCommand(opts: {
 		return;
 	}
 
-	if (arg === "list") {
+	if (tokens[0] === "list") {
 		const teams = await listDiscoveredTeams();
 		if (teams.length === 0) {
 			ctx.ui.notify("No existing teams found", "info");
@@ -59,6 +73,12 @@ export async function handleTeamAttachCommand(opts: {
 			const marks: string[] = [];
 			if (t.teamId === activeTeamId) marks.push("current");
 			if (t.teamId === defaultTeamId) marks.push("session");
+			if (t.attachedBySessionId) {
+				const ownerMark = t.attachedBySessionId === defaultTeamId ? "claimed:you" : `claimed:${t.attachedBySessionId}`;
+				const staleMark = t.attachClaimStale ? "stale" : "live";
+				const age = formatClaimAge(t.attachHeartbeatAt);
+				marks.push(`${ownerMark}:${staleMark}:${age}`);
+			}
 			const mark = marks.length ? ` [${marks.join(",")}]` : "";
 			lines.push(
 				`- ${t.teamId}${mark} · style=${t.style} · workers=${t.onlineWorkerCount}/${t.workerCount} · taskList=${t.taskListId}`,
@@ -69,9 +89,16 @@ export async function handleTeamAttachCommand(opts: {
 		return;
 	}
 
-	const targetTeamId = arg.trim();
-	if (!targetTeamId) {
-		ctx.ui.notify("Usage: /team attach <teamId>", "error");
+	const unknownFlags = tokens.filter((t) => t.startsWith("--") && t !== "--claim");
+	if (unknownFlags.length > 0) {
+		ctx.ui.notify(`Unknown attach flag(s): ${unknownFlags.join(", ")}`, "error");
+		return;
+	}
+	const forceClaim = tokens.includes("--claim");
+	const positional = tokens.filter((t) => !t.startsWith("--"));
+	const targetTeamId = positional[0]?.trim() ?? "";
+	if (!targetTeamId || positional.length !== 1) {
+		ctx.ui.notify("Usage: /team attach <teamId> [--claim]", "error");
 		return;
 	}
 	if (targetTeamId === activeTeamId) {
@@ -103,9 +130,33 @@ export async function handleTeamAttachCommand(opts: {
 				`taskListId: ${cfg.taskListId}`,
 				`style: ${cfg.style ?? "normal"}`,
 				`workers: ${cfg.members.filter((m) => m.role === "worker").length}`,
+				forceClaim ? "mode: force-claim" : "mode: normal claim",
 			].join("\n"),
 		);
 		if (!ok) return;
+	}
+
+	const claimResult = await acquireTeamAttachClaim(targetDir, defaultTeamId, {
+		force: forceClaim,
+		staleMs: TEAM_ATTACH_CLAIM_STALE_MS,
+	});
+	if (!claimResult.ok) {
+		const heldFor = formatClaimAge(claimResult.claim.heartbeatAt);
+		ctx.ui.notify(
+			[
+				`Team ${cfg.teamId} is currently claimed by session ${claimResult.claim.holderSessionId}.`,
+				`last heartbeat: ${heldFor} ago`,
+				"Run '/team attach <teamId> --claim' to force takeover.",
+			].join("\n"),
+			"error",
+		);
+		return;
+	}
+
+	const previouslyAttachedTeamId = activeTeamId !== defaultTeamId ? activeTeamId : null;
+	if (previouslyAttachedTeamId && previouslyAttachedTeamId !== cfg.teamId) {
+		const previousDir = getTeamDir(previouslyAttachedTeamId);
+		await releaseTeamAttachClaim(previousDir, defaultTeamId);
 	}
 
 	setActiveTeamId(cfg.teamId);
@@ -114,14 +165,15 @@ export async function handleTeamAttachCommand(opts: {
 	await refreshTasks();
 	renderWidget();
 
-	ctx.ui.notify(
-		[
-			`Attached to team: ${cfg.teamId}`,
-			`taskListId: ${cfg.taskListId}`,
-			`style: ${cfg.style ?? "normal"}`,
-		].join("\n"),
-		"info",
-	);
+	const lines: string[] = [
+		`Attached to team: ${cfg.teamId}`,
+		`taskListId: ${cfg.taskListId}`,
+		`style: ${cfg.style ?? "normal"}`,
+	];
+	if (claimResult.replacedClaim && claimResult.replacedClaim.holderSessionId !== defaultTeamId) {
+		lines.push(`claim: took over from ${claimResult.replacedClaim.holderSessionId}`);
+	}
+	ctx.ui.notify(lines.join("\n"), "info");
 }
 
 export async function handleTeamDetachCommand(opts: {
@@ -149,9 +201,21 @@ export async function handleTeamDetachCommand(opts: {
 		return;
 	}
 
+	const activeDir = getTeamDir(activeTeamId);
+	const releaseResult = await releaseTeamAttachClaim(activeDir, defaultTeamId);
+
 	setActiveTeamId(defaultTeamId);
 	setTaskListId(defaultTeamId);
 	await refreshTasks();
 	renderWidget();
+
+	if (releaseResult === "not_owner") {
+		ctx.ui.notify(
+			`Detached from external team ${activeTeamId}, but attach claim belonged to another session.`,
+			"warning",
+		);
+		return;
+	}
+
 	ctx.ui.notify(`Detached from external team. Back to session team: ${defaultTeamId}`, "info");
 }
